@@ -208,6 +208,124 @@ const brokerParsers = {
     },
   },
 
+  schwab: {
+    name: "Charles Schwab",
+    detect: (headers) => {
+      // Schwab transaction history format: Date, Action, Symbol, Description, Quantity, Price, Fees & Comm, Amount
+      const transactionHeaders = ["date", "action", "symbol", "quantity"];
+      const hasTransactionFormat = transactionHeaders.every((h) =>
+        headers.some((header) => header.includes(h))
+      );
+
+      // Check for "fees & comm" or "feesandcommissions" which are Schwab-specific
+      const hasSchwabFees = headers.some((h) =>
+        h.includes("fees & comm") || h.includes("feesandcommissions")
+      );
+
+      return hasTransactionFormat && hasSchwabFees;
+    },
+    parse: (rows, headers) => {
+      const getIndex = (name) => headers.findIndex((h) => h.includes(name));
+
+      const dateIdx = getIndex("date");
+      const actionIdx = getIndex("action");
+      const symbolIdx = getIndex("symbol");
+      const descriptionIdx = getIndex("description");
+      const quantityIdx = getIndex("quantity");
+      const priceIdx = getIndex("price");
+      const feesIdx = headers.findIndex((h) => h.includes("fees & comm") || h.includes("feesandcommissions"));
+      const amountIdx = getIndex("amount");
+
+      // Schwab Equity Award specific columns
+      const salePriceIdx = getIndex("saleprice");
+      const fmvPriceIdx = getIndex("fairmarketvalueprice");
+
+      return rows
+        .filter((row) => {
+          const action = (row[actionIdx] || "").toLowerCase();
+          // Filter for buy/sell transactions
+          // Schwab uses actions like "Buy", "Sell", "Stock Plan Activity" (for RSU vesting), "Lapse", "Deposit"
+          return action.includes("buy") ||
+                 action.includes("sell") ||
+                 action.includes("stock plan activity") ||
+                 action.includes("lapse") ||
+                 action.includes("deposit");
+        })
+        .map((row) => {
+          const action = (row[actionIdx] || "").toLowerCase();
+          const quantity = parseFloat((row[quantityIdx] || "0").replace(/[^0-9.-]/g, "")) || 0;
+
+          // Determine transaction type
+          let type = "BUY";
+          let needsHistoricalPrice = false;
+
+          if (action.includes("sell")) {
+            type = "SELL";
+          } else if (action.includes("stock plan activity") || action.includes("lapse") || action.includes("deposit")) {
+            // RSU vesting is treated as a buy at fair market value
+            type = "BUY";
+            needsHistoricalPrice = true; // Flag to fetch closing price on vesting date
+          }
+
+          // Get price - remove $ symbol and parse
+          // prefer sale price for sells, FMV for vesting, otherwise regular price
+          let pricePerUnit = 0;
+          if (type === "SELL" && salePriceIdx !== -1 && row[salePriceIdx]) {
+            pricePerUnit = parseFloat((row[salePriceIdx] || "0").replace(/[^0-9.-]/g, "")) || 0;
+          } else if (type === "BUY" && fmvPriceIdx !== -1 && row[fmvPriceIdx]) {
+            pricePerUnit = parseFloat((row[fmvPriceIdx] || "0").replace(/[^0-9.-]/g, "")) || 0;
+            needsHistoricalPrice = false; // FMV is provided, no need to fetch
+          } else if (priceIdx !== -1) {
+            // Remove $ symbol and parse
+            pricePerUnit = parseFloat((row[priceIdx] || "0").replace(/[^0-9.-]/g, "")) || 0;
+          }
+
+          // If we have a price already, don't need to fetch historical
+          if (pricePerUnit > 0) {
+            needsHistoricalPrice = false;
+          }
+
+          // Parse amount (total value of transaction) - remove $ symbol
+          const amount = amountIdx !== -1 && row[amountIdx]
+            ? parseFloat((row[amountIdx] || "0").replace(/[^0-9.-]/g, ""))
+            : null;
+
+          // Parse fees - remove $ symbol
+          const fees = feesIdx !== -1
+            ? Math.abs(parseFloat((row[feesIdx] || "0").replace(/[^0-9.-]/g, ""))) || 0
+            : 0;
+
+          // Parse date - handle "MM/DD/YYYY as of MM/DD/YYYY" format
+          let date = row[dateIdx] || "";
+          if (date.includes(" as of ")) {
+            // Use the "as of" date which is the actual effective date
+            date = date.split(" as of ")[1];
+          }
+
+          // Normalize ticker (FB → META)
+          let symbol = row[symbolIdx] || "";
+          if (symbol === "FB") {
+            symbol = "META";
+          }
+
+          return {
+            date,
+            type,
+            symbol,
+            assetName: descriptionIdx !== -1 ? row[descriptionIdx] : undefined,
+            quantity: Math.abs(quantity),
+            pricePerUnit,
+            totalAmount: amount !== null ? Math.abs(amount) : null,
+            fees,
+            currency: "USD",
+            exchangeRate: 1,
+            broker: "Charles Schwab",
+            needsHistoricalPrice, // Flag for RSU vesting transactions
+          };
+        });
+    },
+  },
+
   generic: {
     name: "Generic CSV",
     detect: () => true,
@@ -287,7 +405,7 @@ export function detectAndParseCSV(content) {
     throw new Error(`CSV file is empty or invalid. Headers: ${headers.length}, Rows: ${rows.length}`);
   }
 
-  const parserOrder = ["trading212", "interactiveBrokers", "freetrade", "hargreavesLansdown", "generic"];
+  const parserOrder = ["trading212", "interactiveBrokers", "freetrade", "hargreavesLansdown", "schwab", "generic"];
 
   for (const parserKey of parserOrder) {
     const parser = brokerParsers[parserKey];

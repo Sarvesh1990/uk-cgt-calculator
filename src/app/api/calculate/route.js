@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { detectAndParseCSV } from '@/lib/csv-parser';
 import { calculateCGT } from '@/lib/cgt-engine';
+import { fetchHistoricalPricesForTransactions } from '@/lib/historical-price';
 
 export async function POST(request) {
   try {
@@ -54,6 +55,20 @@ export async function POST(request) {
         { error: 'No valid transactions found in uploaded files' },
         { status: 400 }
       );
+    }
+
+    // Fetch historical prices for RSU vesting transactions (Schwab Stock Plan Activity)
+    const transactionsNeedingPrice = allTransactions.filter(txn => txn.needsHistoricalPrice);
+    if (transactionsNeedingPrice.length > 0) {
+      console.log(`[API] Fetching historical prices for ${transactionsNeedingPrice.length} RSU vesting transactions...`);
+      allTransactions = await fetchHistoricalPricesForTransactions(allTransactions);
+
+      // Log any transactions that still have missing prices
+      const missingPrices = allTransactions.filter(txn => txn.priceMissing);
+      if (missingPrices.length > 0) {
+        console.warn(`[API] ${missingPrices.length} transactions have missing prices:`,
+          missingPrices.map(txn => `${txn.symbol} on ${txn.date}`));
+      }
     }
 
     const report = calculateCGT(allTransactions);

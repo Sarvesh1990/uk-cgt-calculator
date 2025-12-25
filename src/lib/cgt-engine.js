@@ -7,6 +7,15 @@
  */
 
 export const TAX_YEARS = {
+  "2025/26": {
+    start: new Date("2025-04-06"),
+    end: new Date("2026-04-05"),
+    annualExemption: 3000,
+    basicRateShares: 0.10,
+    higherRateShares: 0.20,
+    basicRateProperty: 0.18,
+    higherRateProperty: 0.24,
+  },
   "2024/25": {
     start: new Date("2024-04-06"),
     end: new Date("2025-04-05"),
@@ -43,29 +52,91 @@ export const TAX_YEARS = {
     basicRateProperty: 0.18,
     higherRateProperty: 0.28,
   },
+  "2020/21": {
+    start: new Date("2020-04-06"),
+    end: new Date("2021-04-05"),
+    annualExemption: 12300,
+    basicRateShares: 0.10,
+    higherRateShares: 0.20,
+    basicRateProperty: 0.18,
+    higherRateProperty: 0.28,
+  },
+  "2019/20": {
+    start: new Date("2019-04-06"),
+    end: new Date("2020-04-05"),
+    annualExemption: 12000,
+    basicRateShares: 0.10,
+    higherRateShares: 0.20,
+    basicRateProperty: 0.18,
+    higherRateProperty: 0.28,
+  },
+  "2018/19": {
+    start: new Date("2018-04-06"),
+    end: new Date("2019-04-05"),
+    annualExemption: 11700,
+    basicRateShares: 0.10,
+    higherRateShares: 0.20,
+    basicRateProperty: 0.18,
+    higherRateProperty: 0.28,
+  },
+  "2017/18": {
+    start: new Date("2017-04-06"),
+    end: new Date("2018-04-05"),
+    annualExemption: 11300,
+    basicRateShares: 0.10,
+    higherRateShares: 0.20,
+    basicRateProperty: 0.18,
+    higherRateProperty: 0.28,
+  },
 };
 
 function parseDate(dateStr) {
   if (dateStr instanceof Date) return dateStr;
 
-  const formats = [
-    /^(\d{4})-(\d{2})-(\d{2})/,
-    /^(\d{2})\/(\d{2})\/(\d{4})/,
-    /^(\d{2})-(\d{2})-(\d{4})/,
-  ];
+  // Handle string conversion
+  const str = String(dateStr).trim();
 
-  for (const format of formats) {
-    const match = dateStr.match(format);
-    if (match) {
-      if (format === formats[0]) {
-        return new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
-      } else {
-        return new Date(parseInt(match[3]), parseInt(match[2]) - 1, parseInt(match[1]));
-      }
+  // ISO format: YYYY-MM-DD (e.g., "2025-07-06")
+  const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) {
+    const [, year, month, day] = isoMatch;
+    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+  }
+
+  // Slash format: could be MM/DD/YYYY (US) or DD/MM/YYYY (UK)
+  const slashMatch = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashMatch) {
+    const [, first, second, year] = slashMatch;
+    const firstNum = parseInt(first);
+    const secondNum = parseInt(second);
+    const yearNum = parseInt(year);
+
+    // Heuristic to detect format:
+    // - If first number > 12, it MUST be day (UK format: DD/MM/YYYY)
+    // - If second number > 12, it MUST be day (US format: MM/DD/YYYY)
+    // - Otherwise, assume US format (MM/DD/YYYY) since Schwab uses this
+
+    if (firstNum > 12) {
+      // UK format: DD/MM/YYYY (first is day, second is month)
+      return new Date(yearNum, secondNum - 1, firstNum);
+    } else if (secondNum > 12) {
+      // US format: MM/DD/YYYY (first is month, second is day)
+      return new Date(yearNum, firstNum - 1, secondNum);
+    } else {
+      // Ambiguous - assume US format (MM/DD/YYYY) since Schwab uses this
+      return new Date(yearNum, firstNum - 1, secondNum);
     }
   }
 
-  const parsed = new Date(dateStr);
+  // Dash format: DD-MM-YYYY
+  const dashMatch = str.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (dashMatch) {
+    const [, day, month, year] = dashMatch;
+    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+  }
+
+  // Fallback to Date.parse
+  const parsed = new Date(str);
   if (!isNaN(parsed.getTime())) return parsed;
 
   throw new Error(`Unable to parse date: ${dateStr}`);
@@ -90,7 +161,39 @@ function getTaxYear(date) {
       return { year, ...config };
     }
   }
-  return { year: "2024/25", ...TAX_YEARS["2024/25"] };
+
+  // Generate tax year dynamically for dates outside predefined range
+  const year = date.getFullYear();
+  const month = date.getMonth(); // 0-indexed
+  const day = date.getDate();
+
+  // UK tax year runs from April 6 to April 5
+  // If before April 6, it's the previous year's tax year (e.g., Jan 2017 is in 2016/17)
+  // If April 6 or after, it's the current year's tax year (e.g., May 2017 is in 2017/18)
+  let taxYearStart;
+  if (month < 3 || (month === 3 && day < 6)) {
+    // Before April 6 - belongs to previous tax year
+    taxYearStart = year - 1;
+  } else {
+    // April 6 or after - belongs to current tax year
+    taxYearStart = year;
+  }
+
+  const taxYearLabel = `${taxYearStart}/${(taxYearStart + 1).toString().slice(-2)}`;
+
+  console.warn(`[CGT-ENGINE] Date ${date.toISOString().split('T')[0]} outside predefined tax years, calculated as ${taxYearLabel}`);
+
+  // Use default rates for older years
+  return {
+    year: taxYearLabel,
+    start: new Date(`${taxYearStart}-04-06`),
+    end: new Date(`${taxYearStart + 1}-04-05`),
+    annualExemption: 11300, // Default to older exemption amount
+    basicRateShares: 0.10,
+    higherRateShares: 0.20,
+    basicRateProperty: 0.18,
+    higherRateProperty: 0.28,
+  };
 }
 
 function round2dp(num) {
@@ -140,7 +243,10 @@ function calculateProceeds(transaction, quantity) {
 export class CGTCalculator {
   constructor() {
     this.section104Pools = {};
+    this.section104History = {}; // Track history of pool changes
+    this.section104Snapshots = {}; // Track S104 state at start/end of each tax year
     this.disposals = [];
+    this.acquisitions = []; // Track all acquisitions for display
     this.errors = [];
   }
 
@@ -164,9 +270,29 @@ export class CGTCalculator {
     if (!this.section104Pools[symbol]) {
       this.section104Pools[symbol] = { quantity: 0, cost: 0 };
     }
+    if (!this.section104History[symbol]) {
+      this.section104History[symbol] = [];
+    }
 
     const buys = transactions.filter((t) => t.type === "BUY");
     const sells = transactions.filter((t) => t.type === "SELL");
+
+    // Track acquisitions (including RSU vestings)
+    for (const buy of buys) {
+      const cost = calculateCost(buy, buy.quantity);
+      const costPerShare = round2dp(cost / buy.quantity);
+
+      this.acquisitions.push({
+        symbol,
+        date: buy.date.toISOString().split('T')[0],
+        quantity: buy.quantity,
+        totalCost: round2dp(cost),
+        costPerShare,
+        broker: buy.broker,
+        isRSU: buy.broker === 'Charles Schwab' && buy.pricePerUnit > 0, // RSU vesting from Schwab
+        priceSource: buy.priceSource || 'csv',
+      });
+    }
 
     for (const disposal of sells) {
       this.processDisposal(symbol, disposal, buys, transactions);
@@ -175,8 +301,35 @@ export class CGTCalculator {
     for (const buy of buys) {
       if (buy.remainingQty > 0) {
         const cost = calculateCost(buy, buy.remainingQty);
+        const poolBefore = {
+          quantity: this.section104Pools[symbol].quantity,
+          cost: this.section104Pools[symbol].cost,
+          avgCost: this.section104Pools[symbol].quantity > 0
+            ? round2dp(this.section104Pools[symbol].cost / this.section104Pools[symbol].quantity)
+            : 0,
+        };
+
         this.section104Pools[symbol].quantity += buy.remainingQty;
         this.section104Pools[symbol].cost += cost;
+
+        const poolAfter = {
+          quantity: this.section104Pools[symbol].quantity,
+          cost: this.section104Pools[symbol].cost,
+          avgCost: round2dp(this.section104Pools[symbol].cost / this.section104Pools[symbol].quantity),
+        };
+
+        // Record pool history for RSU vestings
+        this.section104History[symbol].push({
+          date: buy.date.toISOString().split('T')[0],
+          type: 'ACQUISITION',
+          quantity: buy.remainingQty,
+          cost: round2dp(cost),
+          costPerShare: round2dp(cost / buy.remainingQty),
+          poolBefore,
+          poolAfter,
+          isRSU: buy.broker === 'Charles Schwab',
+          broker: buy.broker,
+        });
       }
     }
   }
@@ -184,6 +337,7 @@ export class CGTCalculator {
   processDisposal(symbol, disposal, buys) {
     let remainingQty = disposal.quantity;
     const proceeds = calculateProceeds(disposal, disposal.quantity);
+    const proceedsPerShare = round2dp(proceeds / disposal.quantity);
     let totalCost = 0;
     const matchDetails = [];
 
@@ -197,6 +351,7 @@ export class CGTCalculator {
 
       const matchQty = Math.min(remainingQty, buy.remainingQty);
       const matchCost = calculateCost(buy, matchQty);
+      const costPerShare = round2dp(matchCost / matchQty);
 
       totalCost += matchCost;
       remainingQty -= matchQty;
@@ -206,7 +361,12 @@ export class CGTCalculator {
         rule: "SAME_DAY",
         quantity: matchQty,
         cost: matchCost,
+        costPerShare,
+        proceedsPerShare,
+        gainPerShare: round2dp(proceedsPerShare - costPerShare),
         acquisitionDate: buy.date.toISOString().split('T')[0],
+        broker: buy.broker,
+        isRSU: buy.broker === 'Charles Schwab',
       });
     }
 
@@ -222,6 +382,12 @@ export class CGTCalculator {
 
         const matchQty = Math.min(remainingQty, buy.remainingQty);
         const matchCost = calculateCost(buy, matchQty);
+        const costPerShare = round2dp(matchCost / matchQty);
+        const daysDiff = getDaysDifference(disposal.date, buy.date);
+
+        // Calculate what the S104 cost would have been (for comparison)
+        const pool = this.section104Pools[symbol];
+        const s104AvgCost = pool.quantity > 0 ? round2dp(pool.cost / pool.quantity) : 0;
 
         totalCost += matchCost;
         remainingQty -= matchQty;
@@ -231,8 +397,22 @@ export class CGTCalculator {
           rule: "BED_AND_BREAKFAST",
           quantity: matchQty,
           cost: matchCost,
+          costPerShare,
+          proceedsPerShare,
+          gainPerShare: round2dp(proceedsPerShare - costPerShare),
           acquisitionDate: buy.date.toISOString().split('T')[0],
-          daysDifference: getDaysDifference(disposal.date, buy.date),
+          daysDifference: daysDiff,
+          broker: buy.broker,
+          isRSU: buy.broker === 'Charles Schwab',
+          // B&B impact analysis
+          bnbImpact: {
+            s104CostPerShareWouldBe: s104AvgCost,
+            actualCostPerShare: costPerShare,
+            costDifference: round2dp(costPerShare - s104AvgCost),
+            explanation: costPerShare > s104AvgCost
+              ? `B&B increased cost basis by £${round2dp(costPerShare - s104AvgCost)}/share (reduced gain)`
+              : `B&B decreased cost basis by £${round2dp(s104AvgCost - costPerShare)}/share (increased gain)`,
+          },
         });
       }
     }
@@ -256,6 +436,7 @@ export class CGTCalculator {
         const matchQty = Math.min(remainingQty, pool.quantity);
         const avgCost = pool.cost / pool.quantity;
         const matchCost = round2dp(matchQty * avgCost);
+        const costPerShare = round2dp(avgCost);
 
         totalCost += matchCost;
         pool.quantity -= matchQty;
@@ -266,7 +447,12 @@ export class CGTCalculator {
           rule: "SECTION_104",
           quantity: matchQty,
           cost: matchCost,
+          costPerShare,
+          proceedsPerShare,
+          gainPerShare: round2dp(proceedsPerShare - costPerShare),
           averageCost: round2dp(avgCost),
+          poolQuantityBefore: round2dp(pool.quantity + matchQty),
+          poolQuantityAfter: round2dp(pool.quantity),
         });
       }
     }
@@ -283,6 +469,7 @@ export class CGTCalculator {
 
     const gain = round2dp(proceeds - totalCost);
     const taxYear = getTaxYear(disposal.date);
+    const costPerShare = disposal.quantity > 0 ? round2dp(totalCost / disposal.quantity) : 0;
 
     this.disposals.push({
       id: disposal.id,
@@ -291,8 +478,11 @@ export class CGTCalculator {
       date: disposal.date.toISOString().split('T')[0],
       quantity: disposal.quantity,
       proceeds: round2dp(proceeds),
+      proceedsPerShare,
       cost: round2dp(totalCost),
+      costPerShare,
       gain,
+      gainPerShare: round2dp(gain / disposal.quantity),
       taxYear: taxYear.year,
       matchDetails,
       broker: disposal.broker,
@@ -322,6 +512,9 @@ export class CGTCalculator {
       }
     }
 
+    // Calculate S104 snapshots for each tax year
+    const taxYearSnapshots = this.calculateSection104Snapshots();
+
     const taxYearSummaries = Object.values(byTaxYear).map((yearData) => {
       const netGain = round2dp(yearData.totalGains - yearData.totalLosses);
       const annualExemption = yearData.config?.annualExemption || 3000;
@@ -343,6 +536,8 @@ export class CGTCalculator {
         estimatedTaxBasicRate: round2dp(taxableGain * basicRate),
         estimatedTaxHigherRate: round2dp(taxableGain * higherRate),
         disposals: yearData.disposals,
+        section104Start: taxYearSnapshots[yearData.year]?.start || [],
+        section104End: taxYearSnapshots[yearData.year]?.end || [],
       };
     }).sort((a, b) => b.taxYear.localeCompare(a.taxYear));
 
@@ -360,6 +555,7 @@ export class CGTCalculator {
       taxYears: taxYearSummaries,
       section104Pools: section104Summary,
       allDisposals: this.disposals,
+      acquisitions: this.acquisitions,
       errors: this.errors,
       summary: {
         totalDisposals: this.disposals.length,
@@ -367,6 +563,111 @@ export class CGTCalculator {
         overallGain: round2dp(this.disposals.reduce((sum, d) => sum + d.gain, 0)),
       },
     };
+  }
+
+  // Calculate S104 snapshots at start and end of each tax year
+  calculateSection104Snapshots() {
+    const snapshots = {};
+
+    // Collect all events (acquisitions and disposals) with dates
+    const allEvents = [];
+
+    // Add acquisitions
+    for (const acq of this.acquisitions) {
+      allEvents.push({
+        date: parseDate(acq.date),
+        type: 'ACQ',
+        symbol: acq.symbol,
+        quantity: acq.quantity,
+        cost: acq.totalCost,
+      });
+    }
+
+    // Add disposals
+    for (const disp of this.disposals) {
+      allEvents.push({
+        date: parseDate(disp.date),
+        type: 'DISP',
+        symbol: disp.symbol,
+        quantity: disp.quantity,
+        cost: disp.cost,
+      });
+    }
+
+    // Sort by date
+    allEvents.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+    // Get all unique tax years from disposals
+    const taxYears = [...new Set(this.disposals.map(d => d.taxYear))].sort();
+
+    // For each tax year, calculate S104 at start and end
+    for (const taxYear of taxYears) {
+      const config = TAX_YEARS[taxYear];
+      if (!config) continue;
+
+      const yearStart = config.start;
+      const yearEnd = config.end;
+
+      // Calculate S104 at start of tax year (process all events before yearStart)
+      const s104AtStart = {};
+      for (const event of allEvents) {
+        if (event.date >= yearStart) break;
+
+        if (!s104AtStart[event.symbol]) {
+          s104AtStart[event.symbol] = { quantity: 0, cost: 0 };
+        }
+
+        if (event.type === 'ACQ') {
+          s104AtStart[event.symbol].quantity += event.quantity;
+          s104AtStart[event.symbol].cost += event.cost;
+        } else {
+          s104AtStart[event.symbol].quantity -= event.quantity;
+          s104AtStart[event.symbol].cost -= event.cost;
+        }
+      }
+
+      // Calculate S104 at end of tax year (process all events up to yearEnd)
+      const s104AtEnd = {};
+      for (const event of allEvents) {
+        if (event.date > yearEnd) break;
+
+        if (!s104AtEnd[event.symbol]) {
+          s104AtEnd[event.symbol] = { quantity: 0, cost: 0 };
+        }
+
+        if (event.type === 'ACQ') {
+          s104AtEnd[event.symbol].quantity += event.quantity;
+          s104AtEnd[event.symbol].cost += event.cost;
+        } else {
+          s104AtEnd[event.symbol].quantity -= event.quantity;
+          s104AtEnd[event.symbol].cost -= event.cost;
+        }
+      }
+
+      // Convert to array format
+      snapshots[taxYear] = {
+        start: Object.entries(s104AtStart)
+          .filter(([_, pool]) => pool.quantity > 0.001)
+          .map(([symbol, pool]) => ({
+            symbol,
+            quantity: round2dp(pool.quantity),
+            totalCost: round2dp(pool.cost),
+            averageCost: pool.quantity > 0 ? round2dp(pool.cost / pool.quantity) : 0,
+          }))
+          .sort((a, b) => a.symbol.localeCompare(b.symbol)),
+        end: Object.entries(s104AtEnd)
+          .filter(([_, pool]) => pool.quantity > 0.001)
+          .map(([symbol, pool]) => ({
+            symbol,
+            quantity: round2dp(pool.quantity),
+            totalCost: round2dp(pool.cost),
+            averageCost: pool.quantity > 0 ? round2dp(pool.cost / pool.quantity) : 0,
+          }))
+          .sort((a, b) => a.symbol.localeCompare(b.symbol)),
+      };
+    }
+
+    return snapshots;
   }
 }
 
