@@ -10,6 +10,8 @@
   "dependencies": {
     "date-fns": "^4.1.0",
     "firebase": "^12.7.0",
+    "jspdf": "^3.0.4",
+    "jspdf-autotable": "^5.0.2",
     "next": "16.1.1",
     "react": "19.2.3",
     "react-dom": "19.2.3"

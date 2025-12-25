@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useMemo } from 'react';
+import { downloadCGTReport } from '@/lib/pdf-generator';
 
 const BROKERS = [
   { id: 'schwab', name: 'Charles Schwab', icon: '🏦', description: 'Stock Plan Activity, RSU vestings' },
@@ -250,6 +251,9 @@ export default function Home() {
         <header className="text-center mb-8">
           <h1 className="text-4xl font-bold text-white mb-2">🇬🇧 UK Capital Gains Tax Calculator</h1>
           <p className="text-slate-400">Calculate your CGT with HMRC-compliant share matching rules</p>
+          <a href="/tax" className="inline-block mt-3 px-4 py-2 bg-blue-600/20 text-blue-400 rounded-lg text-sm hover:bg-blue-600/30 transition-colors">
+            📄 Have P60? Calculate Full Tax (Income + CGT) →
+          </a>
         </header>
 
         {!result && (
@@ -370,7 +374,8 @@ export default function Home() {
                   </div>
                 )}
               </div>
-              <button onClick={exportJSON} className="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition-colors text-sm">📄 Export JSON</button>
+              <button onClick={exportJSON} className="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition-colors text-sm">📄 JSON</button>
+              <button onClick={() => filteredYearData && downloadCGTReport(filteredYearData, selectedYear)} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-500 transition-colors text-sm">📥 Download PDF for HMRC</button>
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
