@@ -20,8 +20,17 @@ export const TAX_YEARS = {
     start: new Date("2024-04-06"),
     end: new Date("2025-04-05"),
     annualExemption: 3000,
-    basicRateShares: 0.10,
-    higherRateShares: 0.20,
+    // CGT rates changed 30 October 2024 (Autumn Budget 2024)
+    rateChangeDate: new Date("2024-10-30"),
+    // Before 30 Oct 2024
+    basicRateSharesPre: 0.10,
+    higherRateSharesPre: 0.20,
+    // From 30 Oct 2024
+    basicRateSharesPost: 0.18,
+    higherRateSharesPost: 0.24,
+    // Legacy fields for compatibility
+    basicRateShares: 0.18,  // Post-Oct rates as default
+    higherRateShares: 0.24,
     basicRateProperty: 0.18,
     higherRateProperty: 0.24,
   },
@@ -89,6 +98,17 @@ export const TAX_YEARS = {
     higherRateProperty: 0.28,
   },
 };
+
+/**
+ * Format date to YYYY-MM-DD string using local time (not UTC)
+ * This avoids timezone issues where toISOString() shifts dates
+ */
+function formatDateLocal(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 function parseDate(dateStr) {
   if (dateStr instanceof Date) return dateStr;
@@ -181,7 +201,7 @@ function getTaxYear(date) {
 
   const taxYearLabel = `${taxYearStart}/${(taxYearStart + 1).toString().slice(-2)}`;
 
-  console.warn(`[CGT-ENGINE] Date ${date.toISOString().split('T')[0]} outside predefined tax years, calculated as ${taxYearLabel}`);
+  console.warn(`[CGT-ENGINE] Date ${formatDateLocal(date)} outside predefined tax years, calculated as ${taxYearLabel}`);
 
   // Use default rates for older years
   return {
@@ -284,7 +304,7 @@ export class CGTCalculator {
 
       this.acquisitions.push({
         symbol,
-        date: buy.date.toISOString().split('T')[0],
+        date: formatDateLocal(buy.date),
         quantity: buy.quantity,
         totalCost: round2dp(cost),
         costPerShare,
@@ -364,7 +384,7 @@ export class CGTCalculator {
         costPerShare,
         proceedsPerShare,
         gainPerShare: round2dp(proceedsPerShare - costPerShare),
-        acquisitionDate: buy.date.toISOString().split('T')[0],
+        acquisitionDate: formatDateLocal(buy.date),
         broker: buy.broker,
         isRSU: buy.broker === 'Charles Schwab',
       });
@@ -389,6 +409,11 @@ export class CGTCalculator {
         const pool = this.section104Pools[symbol];
         const s104AvgCost = pool.quantity > 0 ? round2dp(pool.cost / pool.quantity) : 0;
 
+        // Original currency info
+        const originalCurrency = buy.currency || 'GBP';
+        const originalCostPerShare = round2dp(buy.pricePerUnit);
+        const exchangeRate = buy.exchangeRate || 1;
+
         totalCost += matchCost;
         remainingQty -= matchQty;
         buy.remainingQty -= matchQty;
@@ -400,10 +425,14 @@ export class CGTCalculator {
           costPerShare,
           proceedsPerShare,
           gainPerShare: round2dp(proceedsPerShare - costPerShare),
-          acquisitionDate: buy.date.toISOString().split('T')[0],
+          acquisitionDate: formatDateLocal(buy.date),
           daysDifference: daysDiff,
           broker: buy.broker,
           isRSU: buy.broker === 'Charles Schwab',
+          // Original currency info
+          originalCurrency,
+          originalCostPerShare,
+          exchangeRate,
           // B&B impact analysis
           bnbImpact: {
             s104CostPerShareWouldBe: s104AvgCost,
@@ -461,9 +490,9 @@ export class CGTCalculator {
       this.errors.push({
         type: "UNMATCHED_DISPOSAL",
         symbol,
-        date: disposal.date.toISOString().split('T')[0],
+date: formatDateLocal(disposal.date),
         unmatchedQuantity: remainingQty,
-        message: `Warning: ${remainingQty} shares of ${symbol} sold on ${disposal.date.toISOString().split('T')[0]} could not be matched`,
+        message: `Warning: ${remainingQty} shares of ${symbol} sold on ${formatDateLocal(disposal.date)} could not be matched`,
       });
     }
 
@@ -475,7 +504,7 @@ export class CGTCalculator {
       id: disposal.id,
       symbol,
       assetName: disposal.assetName,
-      date: disposal.date.toISOString().split('T')[0],
+date: formatDateLocal(disposal.date),
       quantity: disposal.quantity,
       proceeds: round2dp(proceeds),
       proceedsPerShare,
@@ -520,10 +549,70 @@ export class CGTCalculator {
       const annualExemption = yearData.config?.annualExemption || 3000;
       const taxableGain = Math.max(0, netGain - annualExemption);
 
-      const basicRate = yearData.config?.basicRateShares || 0.10;
-      const higherRate = yearData.config?.higherRateShares || 0.20;
+      // Check for rate change date (2024/25 tax year)
+      const rateChangeDate = yearData.config?.rateChangeDate;
+      let preOctGains = 0;
+      let preOctLosses = 0;
+      let postOctGains = 0;
+      let postOctLosses = 0;
 
-      return {
+      if (rateChangeDate) {
+        // Split gains between pre and post 30 October 2024
+        for (const disposal of yearData.disposals) {
+          const disposalDate = parseDate(disposal.date);
+          if (disposalDate < rateChangeDate) {
+            if (disposal.gain >= 0) {
+              preOctGains += disposal.gain;
+            } else {
+              preOctLosses += Math.abs(disposal.gain);
+            }
+          } else {
+            if (disposal.gain >= 0) {
+              postOctGains += disposal.gain;
+            } else {
+              postOctLosses += Math.abs(disposal.gain);
+            }
+          }
+        }
+      }
+
+      // Get rates based on tax year
+      const basicRatePre = yearData.config?.basicRateSharesPre || yearData.config?.basicRateShares || 0.10;
+      const higherRatePre = yearData.config?.higherRateSharesPre || yearData.config?.higherRateShares || 0.20;
+      const basicRatePost = yearData.config?.basicRateSharesPost || yearData.config?.basicRateShares || 0.18;
+      const higherRatePost = yearData.config?.higherRateSharesPost || yearData.config?.higherRateShares || 0.24;
+
+      // Calculate estimated tax with split rates for 2024/25
+      let estimatedTaxBasicRate, estimatedTaxHigherRate;
+
+      if (rateChangeDate && (preOctGains > 0 || postOctGains > 0)) {
+        // Allocate exemption proportionally to pre/post gains
+        const totalGainsForAllocation = preOctGains + postOctGains;
+        const preExemption = totalGainsForAllocation > 0
+          ? round2dp((preOctGains / totalGainsForAllocation) * Math.min(annualExemption, totalGainsForAllocation))
+          : 0;
+        const postExemption = totalGainsForAllocation > 0
+          ? round2dp((postOctGains / totalGainsForAllocation) * Math.min(annualExemption, totalGainsForAllocation))
+          : 0;
+
+        const taxablePreGain = Math.max(0, preOctGains - preOctLosses - preExemption);
+        const taxablePostGain = Math.max(0, postOctGains - postOctLosses - postExemption);
+
+        estimatedTaxBasicRate = round2dp(
+          (taxablePreGain * basicRatePre) + (taxablePostGain * basicRatePost)
+        );
+        estimatedTaxHigherRate = round2dp(
+          (taxablePreGain * higherRatePre) + (taxablePostGain * higherRatePost)
+        );
+      } else {
+        // Standard calculation for years without rate change
+        const basicRate = yearData.config?.basicRateShares || 0.10;
+        const higherRate = yearData.config?.higherRateShares || 0.20;
+        estimatedTaxBasicRate = round2dp(taxableGain * basicRate);
+        estimatedTaxHigherRate = round2dp(taxableGain * higherRate);
+      }
+
+      const result = {
         taxYear: yearData.year,
         numberOfDisposals: yearData.disposals.length,
         totalProceeds: round2dp(yearData.disposals.reduce((sum, d) => sum + d.proceeds, 0)),
@@ -533,12 +622,37 @@ export class CGTCalculator {
         netGain: round2dp(netGain),
         annualExemption,
         taxableGain: round2dp(taxableGain),
-        estimatedTaxBasicRate: round2dp(taxableGain * basicRate),
-        estimatedTaxHigherRate: round2dp(taxableGain * higherRate),
+        estimatedTaxBasicRate,
+        estimatedTaxHigherRate,
         disposals: yearData.disposals,
         section104Start: taxYearSnapshots[yearData.year]?.start || [],
         section104End: taxYearSnapshots[yearData.year]?.end || [],
       };
+
+      // Add split info for 2024/25 tax year
+      if (rateChangeDate) {
+        result.rateChange = {
+          date: '2024-10-30',
+          preOctober: {
+            gains: round2dp(preOctGains),
+            losses: round2dp(preOctLosses),
+            netGain: round2dp(preOctGains - preOctLosses),
+            basicRate: basicRatePre,
+            higherRate: higherRatePre,
+            disposalCount: yearData.disposals.filter(d => parseDate(d.date) < rateChangeDate).length,
+          },
+          postOctober: {
+            gains: round2dp(postOctGains),
+            losses: round2dp(postOctLosses),
+            netGain: round2dp(postOctGains - postOctLosses),
+            basicRate: basicRatePost,
+            higherRate: higherRatePost,
+            disposalCount: yearData.disposals.filter(d => parseDate(d.date) >= rateChangeDate).length,
+          },
+        };
+      }
+
+      return result;
     }).sort((a, b) => b.taxYear.localeCompare(a.taxYear));
 
     const section104Summary = Object.entries(this.section104Pools)

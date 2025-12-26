@@ -77,7 +77,7 @@ export function generateCGTReport(yearData, taxYear) {
   y = addTitle('Tax Calculation', y + 5);
 
   doc.setFillColor(255, 250, 240);
-  doc.rect(14, y, pageWidth - 28, 30, 'F');
+  doc.rect(14, y, pageWidth - 28, yearData.rateChange ? 60 : 30, 'F');
   y += 8;
 
   y = addKeyValue('Net Gain:', formatCurrency(yearData.netGain), y);
@@ -85,11 +85,34 @@ export function generateCGTReport(yearData, taxYear) {
 
   doc.setFont('helvetica', 'bold');
   y = addKeyValue('Taxable Gain:', formatCurrency(yearData.taxableGain), y);
-  y += 5;
+  y += 3;
+
+  // Show rate change breakdown for 2024/25
+  if (yearData.rateChange) {
+    y += 2;
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(0, 51, 102);
+    doc.text('CGT Rate Change - 30 October 2024', 14, y);
+    doc.setTextColor(0);
+    y += 6;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+
+    // Pre-30 Oct
+    doc.text(`Before 30 Oct 2024: ${yearData.rateChange.preOctober.disposalCount} disposal(s), Gains: ${formatCurrency(yearData.rateChange.preOctober.gains)}, Rates: 10%/20%`, 18, y);
+    y += 4;
+
+    // Post-30 Oct
+    doc.text(`From 30 Oct 2024: ${yearData.rateChange.postOctober.disposalCount} disposal(s), Gains: ${formatCurrency(yearData.rateChange.postOctober.gains)}, Rates: 18%/24%`, 18, y);
+    y += 6;
+  }
 
   // Estimated Tax
-  y = addText(`Estimated CGT at Basic Rate (10%): ${formatCurrency(yearData.estimatedTaxBasicRate)}`, y);
-  y = addText(`Estimated CGT at Higher Rate (20%): ${formatCurrency(yearData.estimatedTaxHigherRate)}`, y);
+  doc.setFontSize(10);
+  y = addText(`Estimated CGT at Basic Rate: ${formatCurrency(yearData.estimatedTaxBasicRate)}${yearData.rateChange ? ' (blended)' : ' (10%)'}`, y);
+  y = addText(`Estimated CGT at Higher Rate: ${formatCurrency(yearData.estimatedTaxHigherRate)}${yearData.rateChange ? ' (blended)' : ' (20%)'}`, y);
   y += 10;
 
   // Disposals Table
@@ -109,7 +132,8 @@ export function generateCGTReport(yearData, taxYear) {
     ).join(', ')
   ]);
 
-  doc.autoTable({
+  // Use autoTable directly
+  autoTable(doc, {
     startY: y,
     head: [['#', 'Date', 'Asset', 'Qty', 'Proceeds', 'Cost', 'Gain/Loss', 'Matching']],
     body: disposalRows,
@@ -137,24 +161,54 @@ export function generateCGTReport(yearData, taxYear) {
     y = 20;
   }
 
-  // Section 104 Holdings at End of Year (if available)
-  if (yearData.section104End && yearData.section104End.length > 0) {
-    y = addTitle('Section 104 Holdings at End of Tax Year', y);
+  // Section 104 Holdings at Start of Year (if available)
+  if (yearData.section104Start && yearData.section104Start.length > 0) {
+    y = addTitle('Section 104 Holdings at Start of Tax Year', y);
 
-    const s104Rows = yearData.section104End.map(pool => [
+    const s104StartRows = yearData.section104Start.map(pool => [
       pool.symbol,
       pool.quantity.toLocaleString(),
       formatCurrency(pool.totalCost),
       formatCurrency(pool.averageCost)
     ]);
 
-    doc.autoTable({
+    autoTable(doc, {
       startY: y,
       head: [['Asset', 'Quantity', 'Total Cost', 'Average Cost per Share']],
-      body: s104Rows,
+      body: s104StartRows,
       styles: { fontSize: 9, cellPadding: 3 },
-      headStyles: { fillColor: [88, 28, 135], textColor: 255 },
+      headStyles: { fillColor: [107, 33, 168], textColor: 255 },
       alternateRowStyles: { fillColor: [250, 245, 255] },
+      margin: { left: 14, right: 14 }
+    });
+
+    y = doc.lastAutoTable.finalY + 10;
+  }
+
+  // Check if we need a new page for Section 104 End
+  if (y > 250) {
+    doc.addPage();
+    y = 20;
+  }
+
+  // Section 104 Holdings at End of Year (if available)
+  if (yearData.section104End && yearData.section104End.length > 0) {
+    y = addTitle('Section 104 Holdings at End of Tax Year', y);
+
+    const s104EndRows = yearData.section104End.map(pool => [
+      pool.symbol,
+      pool.quantity.toLocaleString(),
+      formatCurrency(pool.totalCost),
+      formatCurrency(pool.averageCost)
+    ]);
+
+    autoTable(doc, {
+      startY: y,
+      head: [['Asset', 'Quantity', 'Total Cost', 'Average Cost per Share']],
+      body: s104EndRows,
+      styles: { fontSize: 9, cellPadding: 3 },
+      headStyles: { fillColor: [22, 101, 52], textColor: 255 },
+      alternateRowStyles: { fillColor: [240, 253, 244] },
       margin: { left: 14, right: 14 }
     });
 

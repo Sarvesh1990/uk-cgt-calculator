@@ -5,18 +5,24 @@
  */
 
 // UK Tax Year configurations
+// Tax bands are defined as widths applied to TAXABLE INCOME (after PA deduction)
+// This is how HMRC calculates: first £37,700 at 20%, next chunk at 40%, rest at 45%
 export const UK_TAX_CONFIG = {
   "2024/25": {
     personalAllowance: 12570,
     personalAllowanceTaperThreshold: 100000, // PA reduces above this
     personalAllowanceTaperRate: 0.5, // £1 reduction for every £2 over threshold
 
+    // Income tax bands - applied to taxable income (after PA)
+    // Band widths: Basic £37,700, Higher up to £125,140 threshold, Additional above
     incomeTaxBands: [
-      { name: "Personal Allowance", min: 0, max: 12570, rate: 0 },
-      { name: "Basic Rate", min: 12571, max: 50270, rate: 0.20 },
-      { name: "Higher Rate", min: 50271, max: 125140, rate: 0.40 },
-      { name: "Additional Rate", min: 125141, max: Infinity, rate: 0.45 },
+      { name: "Basic Rate", width: 37700, rate: 0.20 },
+      { name: "Higher Rate", threshold: 125140, rate: 0.40 }, // Up to £125,140 of gross (minus PA gives the band)
+      { name: "Additional Rate", width: Infinity, rate: 0.45 },
     ],
+    // For reference: with full PA, basic = £12,571-£50,270, higher = £50,271-£125,140
+    basicRateBandWidth: 37700,
+    higherRateThreshold: 125140, // Gross income threshold where additional rate starts
 
     // National Insurance Class 1 (Employee)
     nationalInsurance: {
@@ -37,10 +43,18 @@ export const UK_TAX_CONFIG = {
       postgraduateRate: 0.06, // 6% for postgraduate
     },
 
-    // CGT rates based on income
+    // CGT rates - CHANGED 30 October 2024 (Autumn Budget 2024)
+    // Before 30 Oct 2024: 10% basic, 20% higher
+    // From 30 Oct 2024: 18% basic, 24% higher
     cgtRates: {
-      basicRate: 0.10, // If total income + gains in basic rate band
-      higherRate: 0.20, // If in higher/additional rate band
+      // Pre-30 Oct 2024 rates
+      basicRatePre: 0.10,
+      higherRatePre: 0.20,
+      // Post-30 Oct 2024 rates
+      basicRatePost: 0.18,
+      higherRatePost: 0.24,
+      // Rate change date
+      rateChangeDate: '2024-10-30',
     },
 
     cgtAnnualExemption: 3000,
@@ -56,11 +70,12 @@ export const UK_TAX_CONFIG = {
     personalAllowanceTaperRate: 0.5,
 
     incomeTaxBands: [
-      { name: "Personal Allowance", min: 0, max: 12570, rate: 0 },
-      { name: "Basic Rate", min: 12571, max: 50270, rate: 0.20 },
-      { name: "Higher Rate", min: 50271, max: 125140, rate: 0.40 },
-      { name: "Additional Rate", min: 125141, max: Infinity, rate: 0.45 },
+      { name: "Basic Rate", width: 37700, rate: 0.20 },
+      { name: "Higher Rate", threshold: 125140, rate: 0.40 },
+      { name: "Additional Rate", width: Infinity, rate: 0.45 },
     ],
+    basicRateBandWidth: 37700,
+    higherRateThreshold: 125140,
 
     nationalInsurance: {
       primaryThreshold: 12570,
@@ -131,48 +146,58 @@ function calculatePersonalAllowance(grossIncome, config) {
 
 /**
  * Calculate Income Tax
+ * Tax bands are applied to TAXABLE income (gross income minus personal allowance)
+ * Band widths: Basic Rate = £37,700, Higher Rate up to £125,140 gross threshold, Additional = rest
  */
-function calculateIncomeTax(taxableIncome, config, pensionContributions = 0) {
-  // Pension contributions extend the basic rate band
-  const adjustedBands = config.incomeTaxBands.map((band, index) => {
-    if (band.name === "Basic Rate") {
-      return { ...band, max: band.max + pensionContributions };
-    }
-    if (band.name === "Higher Rate") {
-      return {
-        ...band,
-        min: band.min + pensionContributions,
-        max: band.max + pensionContributions
-      };
-    }
-    if (band.name === "Additional Rate") {
-      return { ...band, min: band.min + pensionContributions };
-    }
-    return band;
-  });
+function calculateIncomeTax(grossIncome, config, pensionContributions = 0, personalAllowance = null) {
+  // Calculate PA if not provided
+  if (personalAllowance === null) {
+    personalAllowance = calculatePersonalAllowance(grossIncome - pensionContributions, config);
+  }
+
+  // Taxable income = gross - PA - pension (pension contributions extend basic rate band)
+  const taxableIncome = Math.max(0, grossIncome - personalAllowance - pensionContributions);
+
+  if (taxableIncome <= 0) {
+    return { total: 0, breakdown: [] };
+  }
+
+  // Calculate band widths based on config
+  // Basic rate band width is fixed at £37,700
+  // Higher rate band goes from end of basic to £125,140 - PA threshold
+  const basicRateBandWidth = config.basicRateBandWidth || 37700;
+  const higherRateThreshold = config.higherRateThreshold || 125140;
+
+  // When PA is reduced, the taxable amount increases, but the band widths remain the same
+  // Higher rate band width = higherRateThreshold - PA - basicRateBandWidth
+  const higherRateBandWidth = Math.max(0, higherRateThreshold - personalAllowance - basicRateBandWidth);
+
+  // Build effective bands
+  const bands = [
+    { name: "Basic Rate", width: basicRateBandWidth, rate: 0.20 },
+    { name: "Higher Rate", width: higherRateBandWidth, rate: 0.40 },
+    { name: "Additional Rate", width: Infinity, rate: 0.45 },
+  ];
 
   let remainingIncome = taxableIncome;
   let totalTax = 0;
   const breakdown = [];
 
-  for (const band of adjustedBands) {
+  for (const band of bands) {
     if (remainingIncome <= 0) break;
 
-    const bandWidth = band.max - band.min + 1;
-    const incomeInBand = Math.min(remainingIncome, band.min === 0 ? band.max : bandWidth);
+    const incomeInBand = Math.min(remainingIncome, band.width);
 
-    if (taxableIncome > band.min || band.min === 0) {
+    if (incomeInBand > 0) {
       const taxInBand = incomeInBand * band.rate;
       totalTax += taxInBand;
 
-      if (incomeInBand > 0) {
-        breakdown.push({
-          band: band.name,
-          income: Math.round(incomeInBand * 100) / 100,
-          rate: band.rate,
-          tax: Math.round(taxInBand * 100) / 100,
-        });
-      }
+      breakdown.push({
+        band: band.name,
+        income: Math.round(incomeInBand * 100) / 100,
+        rate: band.rate,
+        tax: Math.round(taxInBand * 100) / 100,
+      });
 
       remainingIncome -= incomeInBand;
     }
@@ -231,13 +256,41 @@ function calculateNationalInsurance(grossPay, config) {
 
 /**
  * Calculate CGT rate based on income
- * Basic rate taxpayers: 10%
- * Higher/Additional rate: 20%
+ * For 2024/25: Split rates due to Autumn Budget 2024
+ * - Before 30 Oct 2024: 10% basic, 20% higher
+ * - From 30 Oct 2024: 18% basic, 24% higher
+ *
+ * @param {number} taxableIncome - Taxable income after allowances
+ * @param {number} capitalGain - Total capital gain (or object with pre/post breakdown)
+ * @param {object} config - Tax year configuration
+ * @param {number} pensionContributions - Pension contributions to extend basic rate band
  */
 function calculateCGTRate(taxableIncome, capitalGain, config, pensionContributions = 0) {
   const basicRateLimit = 50270 + pensionContributions; // Extended by pension
   const exemption = config.cgtAnnualExemption;
-  const taxableGain = Math.max(0, capitalGain - exemption);
+
+  // Handle split gains for 2024/25 (pre and post 30 Oct 2024)
+  let gainsPre = 0;
+  let gainsPost = 0;
+
+  if (typeof capitalGain === 'object' && capitalGain !== null) {
+    // If passed as object with pre/post breakdown
+    gainsPre = capitalGain.pre || 0;
+    gainsPost = capitalGain.post || 0;
+  } else {
+    // Simple number - check if we have split rates
+    if (config.cgtRates.rateChangeDate) {
+      // For tax page without detailed breakdown, assume all gains are post-change
+      // (conservative approach - user should use CGT calculator for accurate split)
+      gainsPost = capitalGain;
+    } else {
+      // Old tax year with single rate
+      gainsPre = capitalGain;
+    }
+  }
+
+  const totalGain = gainsPre + gainsPost;
+  const taxableGain = Math.max(0, totalGain - exemption);
 
   if (taxableGain === 0) {
     return {
@@ -253,39 +306,124 @@ function calculateCGTRate(taxableIncome, capitalGain, config, pensionContributio
 
   const breakdown = [];
   let totalCGT = 0;
+  let remainingBasicBand = unusedBasicRate;
 
-  // Gains that fit in basic rate band
-  const gainsAtBasicRate = Math.min(taxableGain, unusedBasicRate);
-  if (gainsAtBasicRate > 0) {
-    const cgtBasic = gainsAtBasicRate * config.cgtRates.basicRate;
-    totalCGT += cgtBasic;
-    breakdown.push({
-      band: "Basic Rate (10%)",
-      gain: Math.round(gainsAtBasicRate * 100) / 100,
-      rate: config.cgtRates.basicRate,
-      tax: Math.round(cgtBasic * 100) / 100,
-    });
+  // Allocate exemption proportionally
+  const exemptionPre = totalGain > 0 ? (gainsPre / totalGain) * exemption : 0;
+  const exemptionPost = totalGain > 0 ? (gainsPost / totalGain) * exemption : 0;
+
+  const taxableGainsPre = Math.max(0, gainsPre - exemptionPre);
+  const taxableGainsPost = Math.max(0, gainsPost - exemptionPost);
+
+  // Process pre-30 Oct gains first (at old rates)
+  if (taxableGainsPre > 0 && config.cgtRates.basicRatePre !== undefined) {
+    const preBasicRate = config.cgtRates.basicRatePre;
+    const preHigherRate = config.cgtRates.higherRatePre;
+
+    // Gains at basic rate
+    const preGainsAtBasic = Math.min(taxableGainsPre, remainingBasicBand);
+    if (preGainsAtBasic > 0) {
+      const tax = preGainsAtBasic * preBasicRate;
+      totalCGT += tax;
+      breakdown.push({
+        band: `Pre-30 Oct Basic Rate (${preBasicRate * 100}%)`,
+        gain: Math.round(preGainsAtBasic * 100) / 100,
+        rate: preBasicRate,
+        tax: Math.round(tax * 100) / 100,
+      });
+      remainingBasicBand -= preGainsAtBasic;
+    }
+
+    // Gains at higher rate
+    const preGainsAtHigher = taxableGainsPre - preGainsAtBasic;
+    if (preGainsAtHigher > 0) {
+      const tax = preGainsAtHigher * preHigherRate;
+      totalCGT += tax;
+      breakdown.push({
+        band: `Pre-30 Oct Higher Rate (${preHigherRate * 100}%)`,
+        gain: Math.round(preGainsAtHigher * 100) / 100,
+        rate: preHigherRate,
+        tax: Math.round(tax * 100) / 100,
+      });
+    }
+  } else if (taxableGainsPre > 0) {
+    // Fallback for old config format
+    const basicRate = config.cgtRates.basicRate || 0.10;
+    const higherRate = config.cgtRates.higherRate || 0.20;
+
+    const gainsAtBasic = Math.min(taxableGainsPre, remainingBasicBand);
+    if (gainsAtBasic > 0) {
+      const tax = gainsAtBasic * basicRate;
+      totalCGT += tax;
+      breakdown.push({
+        band: `Basic Rate (${basicRate * 100}%)`,
+        gain: Math.round(gainsAtBasic * 100) / 100,
+        rate: basicRate,
+        tax: Math.round(tax * 100) / 100,
+      });
+      remainingBasicBand -= gainsAtBasic;
+    }
+
+    const gainsAtHigher = taxableGainsPre - gainsAtBasic;
+    if (gainsAtHigher > 0) {
+      const tax = gainsAtHigher * higherRate;
+      totalCGT += tax;
+      breakdown.push({
+        band: `Higher Rate (${higherRate * 100}%)`,
+        gain: Math.round(gainsAtHigher * 100) / 100,
+        rate: higherRate,
+        tax: Math.round(tax * 100) / 100,
+      });
+    }
   }
 
-  // Gains that exceed basic rate band
-  const gainsAtHigherRate = taxableGain - gainsAtBasicRate;
-  if (gainsAtHigherRate > 0) {
-    const cgtHigher = gainsAtHigherRate * config.cgtRates.higherRate;
-    totalCGT += cgtHigher;
-    breakdown.push({
-      band: "Higher Rate (20%)",
-      gain: Math.round(gainsAtHigherRate * 100) / 100,
-      rate: config.cgtRates.higherRate,
-      tax: Math.round(cgtHigher * 100) / 100,
-    });
+  // Process post-30 Oct gains (at new rates)
+  if (taxableGainsPost > 0) {
+    const postBasicRate = config.cgtRates.basicRatePost || config.cgtRates.basicRate || 0.18;
+    const postHigherRate = config.cgtRates.higherRatePost || config.cgtRates.higherRate || 0.24;
+
+    // Gains at basic rate
+    const postGainsAtBasic = Math.min(taxableGainsPost, remainingBasicBand);
+    if (postGainsAtBasic > 0) {
+      const tax = postGainsAtBasic * postBasicRate;
+      totalCGT += tax;
+      breakdown.push({
+        band: config.cgtRates.rateChangeDate
+          ? `Post-30 Oct Basic Rate (${postBasicRate * 100}%)`
+          : `Basic Rate (${postBasicRate * 100}%)`,
+        gain: Math.round(postGainsAtBasic * 100) / 100,
+        rate: postBasicRate,
+        tax: Math.round(tax * 100) / 100,
+      });
+      remainingBasicBand -= postGainsAtBasic;
+    }
+
+    // Gains at higher rate
+    const postGainsAtHigher = taxableGainsPost - postGainsAtBasic;
+    if (postGainsAtHigher > 0) {
+      const tax = postGainsAtHigher * postHigherRate;
+      totalCGT += tax;
+      breakdown.push({
+        band: config.cgtRates.rateChangeDate
+          ? `Post-30 Oct Higher Rate (${postHigherRate * 100}%)`
+          : `Higher Rate (${postHigherRate * 100}%)`,
+        gain: Math.round(postGainsAtHigher * 100) / 100,
+        rate: postHigherRate,
+        tax: Math.round(tax * 100) / 100,
+      });
+    }
   }
 
   return {
     taxableGain: Math.round(taxableGain * 100) / 100,
-    exemptionUsed: Math.min(capitalGain, exemption),
+    exemptionUsed: Math.min(totalGain, exemption),
     tax: Math.round(totalCGT * 100) / 100,
     breakdown,
     effectiveRate: taxableGain > 0 ? Math.round((totalCGT / taxableGain) * 10000) / 100 : 0,
+    // Additional info for 2024/25
+    gainsPre: Math.round(gainsPre * 100) / 100,
+    gainsPost: Math.round(gainsPost * 100) / 100,
+    hasRateChange: !!config.cgtRates.rateChangeDate,
   };
 }
 
@@ -321,6 +459,8 @@ export function calculateFullTax(params) {
     niPaid = 0,
     pensionContributions = 0,
     capitalGains = 0,
+    capitalGainsSplit = null,
+    incomeSkipped = false,
     studentLoanPlan = null,
     additionalIncome = 0, // Self-employment, rental, etc.
   } = params;
@@ -339,8 +479,8 @@ export function calculateFullTax(params) {
   // Taxable income (after PA and pension)
   const taxableIncome = Math.max(0, totalGrossIncome - personalAllowance - pensionContributions);
 
-  // Income Tax calculation
-  const incomeTax = calculateIncomeTax(taxableIncome + personalAllowance, config, pensionContributions);
+  // Income Tax calculation - pass gross income, the function calculates PA internally
+  const incomeTax = calculateIncomeTax(totalGrossIncome, config, pensionContributions, personalAllowance);
 
   // National Insurance
   const nationalInsurance = calculateNationalInsurance(grossPay, config);
@@ -349,7 +489,26 @@ export function calculateFullTax(params) {
   const pensionRelief = calculatePensionRelief(grossPay, pensionContributions, config);
 
   // CGT calculation with correct rate based on income
-  const cgt = calculateCGTRate(taxableIncome, capitalGains, config, pensionContributions);
+  // Use capitalGainsSplit if provided, otherwise use capitalGains
+  const cgtInput = capitalGainsSplit && (capitalGainsSplit.pre !== undefined || capitalGainsSplit.post !== undefined)
+    ? capitalGainsSplit
+    : capitalGains;
+
+  const cgt = calculateCGTRate(taxableIncome, cgtInput, config, pensionContributions);
+
+  // Calculate pre/post October tax separately for display
+  let preOctTax = 0;
+  let postOctTax = 0;
+
+  if (cgt.breakdown) {
+    for (const band of cgt.breakdown) {
+      if (band.band.includes('Pre-30 Oct')) {
+        preOctTax += band.tax;
+      } else if (band.band.includes('Post-30 Oct')) {
+        postOctTax += band.tax;
+      }
+    }
+  }
 
   // Total tax liability
   const totalTaxDue = incomeTax.total + cgt.tax;
@@ -399,7 +558,11 @@ export function calculateFullTax(params) {
 
     nationalInsurance,
     pensionRelief,
-    capitalGainsTax: cgt,
+    capitalGainsTax: {
+      ...cgt,
+      preOctTax: Math.round(preOctTax * 100) / 100,
+      postOctTax: Math.round(postOctTax * 100) / 100,
+    },
 
     config: {
       taxYear,

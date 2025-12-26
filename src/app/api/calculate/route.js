@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { detectAndParseCSV } from '@/lib/csv-parser';
 import { calculateCGT } from '@/lib/cgt-engine';
 import { fetchHistoricalPricesForTransactions } from '@/lib/historical-price';
+import { applyExchangeRates } from '@/lib/exchange-rate';
 
 export async function POST(request) {
   try {
@@ -70,6 +71,10 @@ export async function POST(request) {
           missingPrices.map(txn => `${txn.symbol} on ${txn.date}`));
       }
     }
+
+    // Fetch exchange rates for USD transactions
+    console.log('[API] Applying exchange rates for USD transactions...');
+    allTransactions = await applyExchangeRates(allTransactions);
 
     const report = calculateCGT(allTransactions);
 

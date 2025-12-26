@@ -308,6 +308,14 @@ const brokerParsers = {
             symbol = "META";
           }
 
+          // Determine currency - Schwab is primarily USD but some UK shares may be GBP
+          // Check if there's a currency column, otherwise default to USD
+          const currencyIdx = getIndex("currency");
+          let currency = "USD";
+          if (currencyIdx !== -1 && row[currencyIdx]) {
+            currency = row[currencyIdx].toUpperCase().trim();
+          }
+
           return {
             date,
             type,
@@ -317,10 +325,130 @@ const brokerParsers = {
             pricePerUnit,
             totalAmount: amount !== null ? Math.abs(amount) : null,
             fees,
-            currency: "USD",
+            currency,
             exchangeRate: 1,
             broker: "Charles Schwab",
             needsHistoricalPrice, // Flag for RSU vesting transactions
+          };
+        });
+    },
+  },
+
+  morganStanley: {
+    name: "Morgan Stanley",
+    detect: (headers) => {
+      // Morgan Stanley format: Action, Time, ISIN, Ticker, Name, No. of shares, Price / share, etc.
+      const required = ["action", "ticker", "no. of shares", "price / share"];
+      return required.every((h) => headers.some((header) => header.includes(h)));
+    },
+    parse: (rows, headers) => {
+      const getIndex = (name) => headers.findIndex((h) => h.includes(name));
+
+      const actionIdx = getIndex("action");
+      const timeIdx = getIndex("time");
+      const tickerIdx = getIndex("ticker");
+      const nameIdx = getIndex("name");
+      const sharesIdx = getIndex("no. of shares");
+      const priceIdx = getIndex("price / share");
+      const totalIdx = getIndex("total");
+
+      return rows
+        .filter((row) => {
+          const action = (row[actionIdx] || "").toLowerCase();
+          const ticker = row[tickerIdx] || "";
+          return (action.includes("buy") || action.includes("sell")) && ticker && ticker !== "N/A";
+        })
+        .map((row) => {
+          const action = (row[actionIdx] || "").toLowerCase();
+          const shares = parseFloat((row[sharesIdx] || "0").replace(/[^0-9.-]/g, "")) || 0;
+          const price = parseFloat((row[priceIdx] || "0").replace(/[^0-9.-]/g, "")) || 0;
+
+          // Morgan Stanley is USD only - calculate total from shares * price
+          const totalInUSD = Math.abs(shares * price);
+
+          return {
+            date: row[timeIdx] || "",
+            type: action.includes("sell") ? "SELL" : "BUY",
+            symbol: row[tickerIdx] || "",
+            assetName: nameIdx !== -1 ? row[nameIdx] : undefined,
+            quantity: Math.abs(shares),
+            pricePerUnit: price,
+            totalAmount: totalInUSD,
+            fees: 0,
+            currency: "USD", // Morgan Stanley is USD only
+            exchangeRate: 1,
+            broker: "Morgan Stanley",
+          };
+        });
+    },
+  },
+
+  ig: {
+    name: "IG",
+    detect: (headers) => {
+      // IG format: Date, Reference, Description, Market, Size, Price, etc.
+      // or Date, Market, Direction, Size, Open, Close, P/L
+      const igHeaders1 = ["date", "market", "size", "price"];
+      const igHeaders2 = ["date", "reference", "description", "market"];
+      return igHeaders1.every((h) => headers.some((header) => header.includes(h))) ||
+             igHeaders2.every((h) => headers.some((header) => header.includes(h)));
+    },
+    parse: (rows, headers) => {
+      const getIndex = (name) => headers.findIndex((h) => h.includes(name));
+
+      const dateIdx = getIndex("date");
+      const marketIdx = getIndex("market");
+      const directionIdx = getIndex("direction");
+      const descIdx = getIndex("description");
+      const sizeIdx = getIndex("size");
+      const priceIdx = getIndex("price");
+      const openIdx = getIndex("open");
+      const closeIdx = getIndex("close");
+      const plIdx = getIndex("p/l");
+
+      return rows
+        .filter((row) => {
+          // Filter for actual trades
+          const size = parseFloat((row[sizeIdx] || "0").replace(/[^0-9.-]/g, ""));
+          return !isNaN(size) && size !== 0;
+        })
+        .map((row) => {
+          const size = parseFloat((row[sizeIdx] || "0").replace(/[^0-9.-]/g, "")) || 0;
+          let type = "BUY";
+
+          // Determine type from direction column or size sign
+          if (directionIdx !== -1) {
+            const direction = (row[directionIdx] || "").toLowerCase();
+            type = direction.includes("sell") ? "SELL" : "BUY";
+          } else if (size < 0) {
+            type = "SELL";
+          }
+
+          // Get price - prefer specific price column, fall back to open/close
+          let pricePerUnit = 0;
+          if (priceIdx !== -1 && row[priceIdx]) {
+            pricePerUnit = parseFloat((row[priceIdx] || "0").replace(/[^0-9.-]/g, "")) || 0;
+          } else if (type === "SELL" && closeIdx !== -1) {
+            pricePerUnit = parseFloat((row[closeIdx] || "0").replace(/[^0-9.-]/g, "")) || 0;
+          } else if (type === "BUY" && openIdx !== -1) {
+            pricePerUnit = parseFloat((row[openIdx] || "0").replace(/[^0-9.-]/g, "")) || 0;
+          }
+
+          // Extract symbol from market name (e.g., "Apple Inc" -> "AAPL")
+          const market = row[marketIdx] || "";
+
+          return {
+            date: row[dateIdx] || "",
+            type,
+            symbol: market, // May need symbol extraction
+            assetName: market,
+            quantity: Math.abs(size),
+            pricePerUnit,
+            totalAmount: Math.abs(size * pricePerUnit),
+            fees: 0,
+            currency: "GBP", // IG is GBP
+            exchangeRate: 1,
+            broker: "IG",
           };
         });
     },
@@ -405,7 +533,7 @@ export function detectAndParseCSV(content) {
     throw new Error(`CSV file is empty or invalid. Headers: ${headers.length}, Rows: ${rows.length}`);
   }
 
-  const parserOrder = ["trading212", "interactiveBrokers", "freetrade", "hargreavesLansdown", "schwab", "generic"];
+  const parserOrder = ["trading212", "morganStanley", "interactiveBrokers", "freetrade", "hargreavesLansdown", "schwab", "ig", "generic"];
 
   for (const parserKey of parserOrder) {
     const parser = brokerParsers[parserKey];

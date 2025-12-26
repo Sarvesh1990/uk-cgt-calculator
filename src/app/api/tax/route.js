@@ -12,6 +12,8 @@ export async function POST(request) {
       niPaid,
       pensionContributions,
       capitalGains,
+      capitalGainsSplit,
+      incomeSkipped,
       studentLoanPlan,
       additionalIncome,
     } = data;
@@ -32,14 +34,13 @@ export async function POST(request) {
       niPaid: parseFloat(niPaid) || 0,
       pensionContributions: parseFloat(pensionContributions) || 0,
       capitalGains: parseFloat(capitalGains) || 0,
+      capitalGainsSplit,
+      incomeSkipped,
       studentLoanPlan,
       additionalIncome: parseFloat(additionalIncome) || 0,
     });
 
-    return NextResponse.json({
-      success: true,
-      result,
-    });
+    return NextResponse.json(result);
 
   } catch (error) {
     console.error('Tax calculation error:', error);
