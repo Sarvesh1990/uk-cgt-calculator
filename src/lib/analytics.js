@@ -104,3 +104,17 @@ export function trackPDFDownload(taxYear) {
 export function trackFeedbackSubmitted(rating) {
   trackEvent('feedback_submitted', { rating });
 }
+
+/**
+ * Track edit income click
+ */
+export function trackEditIncome() {
+  trackEvent('edit_income');
+}
+
+/**
+ * Track edit CGT click
+ */
+export function trackEditCGT() {
+  trackEvent('edit_cgt');
+}

@@ -63,7 +63,7 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Missing sessionId' }, { status: 400 });
     }
 
-    const validEvents = ['page_visit', 'step_completed', 'step_skipped', 'cgt_calculated', 'pdf_downloaded', 'feedback_submitted'];
+    const validEvents = ['page_visit', 'step_completed', 'step_skipped', 'cgt_calculated', 'pdf_downloaded', 'feedback_submitted', 'edit_income', 'edit_cgt'];
     if (!event || !validEvents.includes(event)) {
       return NextResponse.json({ error: 'Invalid event type' }, { status: 400 });
     }

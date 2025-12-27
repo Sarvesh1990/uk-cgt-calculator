@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { submitFeedback } from '@/lib/feedback';
+import { trackFeedbackSubmitted } from '@/lib/analytics';
 
 export default function FeedbackWidget({ taxYear, hadIncome, hadCGT }) {
   const [rating, setRating] = useState(0);
@@ -28,6 +29,7 @@ export default function FeedbackWidget({ taxYear, hadIncome, hadCGT }) {
     setSubmitting(false);
 
     if (result.success) {
+      trackFeedbackSubmitted(rating);
       setSubmitted(true);
     } else {
       setError('Failed to submit feedback. Please try again.');

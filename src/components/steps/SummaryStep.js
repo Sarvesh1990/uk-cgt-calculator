@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { formatCurrency } from '@/lib/constants';
 import FeedbackWidget from '@/components/ui/FeedbackWidget';
-import { trackStepCompleted } from '@/lib/analytics';
+import { trackStepCompleted, trackEditIncome, trackEditCGT } from '@/lib/analytics';
 
 export default function SummaryStep({ taxYear, incomeData, cgtResult, onStartOver, onEditStep }) {
   const [taxCalc, setTaxCalc] = useState(null);
@@ -249,14 +249,14 @@ export default function SummaryStep({ taxYear, incomeData, cgtResult, onStartOve
         <h3 className="text-white font-medium mb-3">📝 Need to make changes?</h3>
         <div className="flex flex-wrap gap-3">
           <button
-            onClick={() => onEditStep(1)}
+            onClick={() => { trackEditIncome(); onEditStep(1); }}
             className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 border border-slate-600 hover:border-slate-500 rounded-lg text-slate-300 hover:text-white transition-all text-sm"
           >
             <span>💼</span>
             <span>Edit Income</span>
           </button>
           <button
-            onClick={() => onEditStep(2)}
+            onClick={() => { trackEditCGT(); onEditStep(2); }}
             className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 border border-slate-600 hover:border-slate-500 rounded-lg text-slate-300 hover:text-white transition-all text-sm"
           >
             <span>📈</span>
