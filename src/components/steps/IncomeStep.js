@@ -6,15 +6,36 @@ export default function IncomeStep({ data, onChange, onNext, onSkip }) {
   };
 
   const hasData = data.grossPay || data.taxPaid || data.niPaid || data.pensionContributions;
+  const hasName = data.firstName && data.lastName;
 
   return (
     <div className="space-y-6">
       <div className="text-center mb-6">
-        <h2 className="text-2xl font-bold text-white mb-2">💼 Employment Income Details</h2>
-        <p className="text-slate-400">Enter details from your P60 or final payslip</p>
+        <h2 className="text-2xl font-bold text-white mb-2">💼 Personal & Income Details</h2>
+        <p className="text-slate-400">Enter your details and information from your P60 or final payslip</p>
       </div>
 
       <div className="max-w-md mx-auto space-y-4">
+        {/* Name Fields */}
+        <div className="grid grid-cols-2 gap-4">
+          <TextInputField
+            label="First Name"
+            value={data.firstName}
+            onChange={(v) => handleChange('firstName', v)}
+            placeholder="John"
+          />
+          <TextInputField
+            label="Last Name"
+            value={data.lastName}
+            onChange={(v) => handleChange('lastName', v)}
+            placeholder="Smith"
+          />
+        </div>
+
+        <div className="border-t border-slate-700 my-4 pt-4">
+          <p className="text-slate-400 text-sm mb-4">Employment Income (from P60)</p>
+        </div>
+
         <InputField
           label="Gross Pay"
           value={data.grossPay}
@@ -62,6 +83,21 @@ export default function IncomeStep({ data, onChange, onNext, onSkip }) {
       <p className="text-center text-slate-500 text-xs mt-4">
         💡 If you skip, CGT will be calculated assuming basic rate band is available
       </p>
+    </div>
+  );
+}
+
+function TextInputField({ label, value, onChange, placeholder }) {
+  return (
+    <div>
+      <label className="block text-slate-300 text-sm font-medium mb-1">{label}</label>
+      <input
+        type="text"
+        value={value || ''}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full px-4 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+      />
     </div>
   );
 }

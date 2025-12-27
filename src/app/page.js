@@ -1,17 +1,20 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import StepIndicator from '@/components/ui/StepIndicator';
 import IncomeStep from '@/components/steps/IncomeStep';
 import CGTStep from '@/components/steps/CGTStep';
 import SummaryStep from '@/components/steps/SummaryStep';
 import { TAX_YEARS } from '@/lib/constants';
+import { trackPageVisit, trackStepCompleted, trackStepSkipped, resetSession } from '@/lib/analytics';
 
 export default function Home() {
   const [currentStep, setCurrentStep] = useState(1);
   const [taxYear, setTaxYear] = useState('2024/25');
 
   const [incomeData, setIncomeData] = useState({
+    firstName: '',
+    lastName: '',
     grossPay: '',
     taxPaid: '',
     niPaid: '',
@@ -21,24 +24,39 @@ export default function Home() {
 
   const [cgtResult, setCgtResult] = useState(null);
 
+  // Track page visit on mount
+  useEffect(() => {
+    trackPageVisit(taxYear);
+  }, []);
+
   const goToStep = (step) => setCurrentStep(step);
 
   const handleIncomeNext = () => {
     setIncomeData({ ...incomeData, skipped: false });
+    trackStepCompleted(1, { hasIncome: true });
     goToStep(2);
   };
 
   const handleIncomeSkip = () => {
     setIncomeData({ ...incomeData, skipped: true });
+    trackStepSkipped(1);
     goToStep(2);
   };
 
-  const handleCGTNext = () => goToStep(3);
-  const handleCGTSkip = () => goToStep(3);
+  const handleCGTNext = () => {
+    trackStepCompleted(2, { hasCGT: !!cgtResult });
+    goToStep(3);
+  };
+
+  const handleCGTSkip = () => {
+    trackStepSkipped(2);
+    goToStep(3);
+  };
 
   const handleStartOver = () => {
+    resetSession(); // Generate new session ID
     setCurrentStep(1);
-    setIncomeData({ grossPay: '', taxPaid: '', niPaid: '', pensionContributions: '', skipped: false });
+    setIncomeData({ firstName: '', lastName: '', grossPay: '', taxPaid: '', niPaid: '', pensionContributions: '', skipped: false });
     setCgtResult(null);
   };
 

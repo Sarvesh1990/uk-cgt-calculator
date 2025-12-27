@@ -3,15 +3,19 @@
 import { useState, useEffect } from 'react';
 import { formatCurrency } from '@/lib/constants';
 import FeedbackWidget from '@/components/ui/FeedbackWidget';
+import { trackStepCompleted } from '@/lib/analytics';
 
 export default function SummaryStep({ taxYear, incomeData, cgtResult, onStartOver, onEditStep }) {
   const [taxCalc, setTaxCalc] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const yearData = cgtResult?.report?.taxYears?.find(y => y.taxYear === taxYear);
+  const hasIncome = !incomeData.skipped && parseFloat(incomeData.grossPay) > 0;
 
   useEffect(() => {
     calculateTax();
+    // Track reaching the final step
+    trackStepCompleted(3, { taxYear, hasIncome, hasCGT: !!yearData });
   }, [taxYear, incomeData, cgtResult]);
 
   const calculateTax = async () => {
@@ -72,7 +76,6 @@ export default function SummaryStep({ taxYear, incomeData, cgtResult, onStartOve
 
   const summary = taxCalc?.summary;
   const hasCGT = yearData && yearData.taxableGain > 0;
-  const hasIncome = !incomeData.skipped && parseFloat(incomeData.grossPay) > 0;
   const totalBalance = summary?.balanceToPay || (taxCalc?.capitalGainsTax?.tax || 0);
 
   return (
