@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { formatCurrency } from '@/lib/constants';
+import FeedbackWidget from '@/components/ui/FeedbackWidget';
 
 export default function SummaryStep({ taxYear, incomeData, cgtResult, onStartOver, onEditStep }) {
   const [taxCalc, setTaxCalc] = useState(null);
@@ -269,6 +270,13 @@ export default function SummaryStep({ taxYear, incomeData, cgtResult, onStartOve
       <p className="text-amber-400/70 text-xs text-center">
         ⚠️ For guidance only - verify with a qualified tax professional
       </p>
+
+      {/* Feedback Widget */}
+      <FeedbackWidget
+        taxYear={taxYear}
+        hadIncome={hasIncome}
+        hadCGT={!!yearData}
+      />
     </div>
   );
 }

@@ -1,15 +1,43 @@
 import { NextResponse } from 'next/server';
-import { detectAndParseCSV } from '@/lib/csv-parser';
+import { parseCSV, parseXLSX, brokerParsers } from '@/lib/csv-parser';
 import { calculateCGT } from '@/lib/cgt-engine';
 import { fetchHistoricalPricesForTransactions } from '@/lib/historical-price';
 import { applyExchangeRates } from '@/lib/exchange-rate';
+
+// Map broker IDs to parser keys
+const BROKER_ID_TO_PARSER = {
+  'schwab': 'schwab',
+  'trading212': 'trading212',
+  'morgan-stanley': 'morganStanley',
+  'ibkr': 'interactiveBrokers',
+  'freetrade': 'freetrade',
+  'hl': 'hargreavesLansdown',
+  'ig': 'ig',
+  'generic': 'generic',
+  'other': 'generic',
+};
+
+// Map broker IDs to display names
+const BROKER_ID_TO_NAME = {
+  'schwab': 'Charles Schwab',
+  'trading212': 'Trading 212',
+  'morgan-stanley': 'Morgan Stanley',
+  'ibkr': 'Interactive Brokers',
+  'freetrade': 'Freetrade',
+  'hl': 'Hargreaves Lansdown',
+  'ig': 'IG',
+  'generic': 'Generic CSV',
+  'other': 'Other',
+};
 
 export async function POST(request) {
   try {
     const formData = await request.formData();
     const files = formData.getAll('files');
+    const brokers = formData.getAll('brokers'); // Get broker IDs for each file
 
     console.log('Files received:', files.length);
+    console.log('Brokers received:', brokers);
 
     if (!files || files.length === 0) {
       return NextResponse.json(
@@ -21,30 +49,85 @@ export async function POST(request) {
     let allTransactions = [];
     const parsedFiles = [];
 
-    for (const file of files) {
-      // Handle both File objects and Blob objects
-      let content;
-      if (typeof file === 'string') {
-        content = file;
-      } else if (file instanceof Blob || file instanceof File) {
-        content = await file.text();
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const brokerId = brokers[i] || 'other'; // Get corresponding broker ID
+      const fileName = file.name?.toLowerCase() || '';
+      const isXLSX = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
+
+      // Get the parser for this broker
+      const parserKey = BROKER_ID_TO_PARSER[brokerId] || 'generic';
+      const parser = brokerParsers[parserKey];
+      const brokerName = BROKER_ID_TO_NAME[brokerId] || 'Unknown';
+
+      console.log(`Processing file: ${file.name} with broker: ${brokerName} (${brokerId})`);
+
+      let headers, rows;
+
+      if (isXLSX) {
+        // Handle XLSX/XLS files
+        const buffer = await file.arrayBuffer();
+        const parsed = parseXLSX(buffer);
+        headers = parsed.headers;
+        rows = parsed.rows;
       } else {
-        console.log('Unknown file type:', typeof file, file);
+        // Handle CSV files
+        let content;
+        if (typeof file === 'string') {
+          content = file;
+        } else if (file instanceof Blob || file instanceof File) {
+          content = await file.text();
+        } else {
+          console.log('Unknown file type:', typeof file, file);
+          continue;
+        }
+
+        if (!content || content.trim().length === 0) {
+          console.log('Empty file content for:', file.name);
+          continue;
+        }
+
+        // Remove BOM if present
+        if (content.charCodeAt(0) === 0xFEFF) {
+          content = content.slice(1);
+        }
+
+        const parsed = parseCSV(content);
+        headers = parsed.headers;
+        rows = parsed.rows;
+      }
+
+      console.log('Parsed headers:', headers);
+      console.log('Parsed rows count:', rows.length);
+
+      if (headers.length === 0 || rows.length === 0) {
+        console.log(`File ${file.name} is empty or invalid`);
         continue;
       }
 
-      console.log('File content length:', content?.length, 'First 100 chars:', content?.substring(0, 100));
+      // Use the selected broker's parser
+      let transactions;
+      try {
+        transactions = parser.parse(rows, headers);
 
-      if (!content || content.trim().length === 0) {
-        console.log('Empty file content for:', file.name);
-        continue;
+        // Override broker name with the user-selected broker
+        transactions = transactions.map(t => ({
+          ...t,
+          broker: brokerName,
+        }));
+      } catch (parseError) {
+        console.error(`Error parsing file ${file.name} with ${brokerName} parser:`, parseError);
+        // Fall back to generic parser
+        transactions = brokerParsers.generic.parse(rows, headers);
+        transactions = transactions.map(t => ({
+          ...t,
+          broker: brokerName,
+        }));
       }
-
-      const { broker, transactions } = detectAndParseCSV(content);
 
       parsedFiles.push({
         filename: file.name,
-        broker,
+        broker: brokerName,
         transactionCount: transactions.length,
       });
 

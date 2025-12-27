@@ -26,7 +26,9 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
     e.stopPropagation();
     setDragActive(false);
     if (!selectedBroker) return;
-    const files = Array.from(e.dataTransfer.files).filter(f => f.name.endsWith('.csv'));
+    const files = Array.from(e.dataTransfer.files).filter(f =>
+      f.name.endsWith('.csv') || f.name.endsWith('.xlsx') || f.name.endsWith('.xls')
+    );
     if (files.length) setCurrentFiles(prev => [...prev, ...files]);
   }, [selectedBroker]);
 
@@ -53,8 +55,20 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
 
     try {
       const formData = new FormData();
-      brokerUploads.forEach(u => u.files.forEach(f => formData.append('files', f)));
-      currentFiles.forEach(f => formData.append('files', f));
+
+      // Pass files with their associated broker info
+      brokerUploads.forEach(u => {
+        u.files.forEach(f => {
+          formData.append('files', f);
+          formData.append('brokers', u.broker.id); // Pass broker ID for each file
+        });
+      });
+
+      // Handle any remaining current files (shouldn't happen as addBrokerFiles is called above)
+      currentFiles.forEach(f => {
+        formData.append('files', f);
+        formData.append('brokers', selectedBroker?.id || 'unknown');
+      });
 
       const res = await fetch('/api/calculate', { method: 'POST', body: formData });
       const data = await res.json();
@@ -370,10 +384,10 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
             onClick={() => document.getElementById('fileInput').click()}
           >
             <p className="text-3xl mb-2">📤</p>
-            <p className="text-white">Drag & drop CSV files</p>
-            <p className="text-slate-400 text-sm">or click to browse</p>
+            <p className="text-white">Drag & drop CSV or Excel files</p>
+            <p className="text-slate-400 text-sm">or click to browse (.csv, .xlsx, .xls)</p>
           </div>
-          <input type="file" id="fileInput" className="hidden" multiple accept=".csv" onChange={handleFileChange} />
+          <input type="file" id="fileInput" className="hidden" multiple accept=".csv,.xlsx,.xls" onChange={handleFileChange} />
 
           {currentFiles.length > 0 && (
             <div className="space-y-2">

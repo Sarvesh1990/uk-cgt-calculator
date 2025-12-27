@@ -49,26 +49,80 @@ function formatDate(date) {
 }
 
 /**
- * Fetch single rate from Frankfurter API
+ * Check if a date is in the future
  */
-async function fetchSingleRate(dateStr) {
-  const url = `https://api.frankfurter.app/${dateStr}?from=USD&to=GBP`;
+function isFutureDate(dateStr) {
+  const date = new Date(dateStr);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return date > today;
+}
 
-  const response = await fetch(url, {
-    signal: AbortSignal.timeout(5000)
-  });
+/**
+ * Get the most recent valid date for exchange rate lookup
+ * If date is in the future or weekend, returns the last valid business day
+ */
+function getValidExchangeRateDate(dateStr) {
+  let date = new Date(dateStr);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
-  if (!response.ok) {
-    throw new Error(`API returned ${response.status}`);
+  // If future date, use today or yesterday
+  if (date > today) {
+    date = new Date(today);
   }
 
-  const data = await response.json();
-
-  if (data.rates && data.rates.GBP) {
-    return data.rates.GBP;
+  // Frankfurter API doesn't have weekend rates, so go back to Friday
+  const dayOfWeek = date.getDay();
+  if (dayOfWeek === 0) { // Sunday
+    date.setDate(date.getDate() - 2);
+  } else if (dayOfWeek === 6) { // Saturday
+    date.setDate(date.getDate() - 1);
   }
 
-  throw new Error('Invalid response');
+  return date.toISOString().split('T')[0];
+}
+
+/**
+ * Fetch single rate from Frankfurter API with retry
+ */
+async function fetchSingleRate(dateStr, retries = 2) {
+  // Adjust date if it's a future date or weekend
+  const validDate = getValidExchangeRateDate(dateStr);
+
+  const url = `https://api.frankfurter.app/${validDate}?from=USD&to=GBP`;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+      const response = await fetch(url, {
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.rates && data.rates.GBP) {
+        return data.rates.GBP;
+      }
+
+      throw new Error('Invalid response');
+    } catch (error) {
+      if (attempt < retries) {
+        // Wait before retrying (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+        continue;
+      }
+      throw error;
+    }
+  }
 }
 
 /**

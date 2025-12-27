@@ -1,7 +1,115 @@
 /**
- * CSV Parser for multiple UK broker formats
- * Supports: Trading 212, Interactive Brokers, Freetrade, Hargreaves Lansdown, Generic
+ * File Parser for multiple UK broker formats
+ * Supports: CSV and XLSX files
+ * Brokers: Trading 212, Interactive Brokers, Freetrade, Hargreaves Lansdown, Charles Schwab, Morgan Stanley, IG, Generic
  */
+
+import * as XLSX from 'xlsx';
+
+/**
+ * Convert Excel serial date number to ISO date string
+ * Excel dates are stored as days since Dec 30, 1899 (with a bug for 1900 leap year)
+ * @param {number} serial - Excel serial date number
+ * @returns {string} - ISO date string (YYYY-MM-DD) or datetime string
+ */
+function excelSerialToDate(serial) {
+  // Excel's epoch is December 30, 1899
+  // But there's a bug where Excel thinks 1900 was a leap year, so we need to adjust
+  const excelEpoch = new Date(Date.UTC(1899, 11, 30)); // Dec 30, 1899
+
+  // Handle the Excel leap year bug (dates after Feb 28, 1900 need adjustment)
+  const adjustedSerial = serial > 60 ? serial - 1 : serial;
+
+  // Calculate the date
+  const date = new Date(excelEpoch.getTime() + adjustedSerial * 24 * 60 * 60 * 1000);
+
+  // Check if there's a time component (decimal part)
+  const hasTime = serial % 1 !== 0;
+
+  if (hasTime) {
+    // Return datetime in ISO format
+    return date.toISOString().replace('T', ' ').slice(0, 19);
+  } else {
+    // Return just the date
+    return date.toISOString().slice(0, 10);
+  }
+}
+
+/**
+ * Check if a value looks like an Excel serial date
+ * Excel dates for years 2000-2100 are roughly between 36526 and 73050
+ * @param {any} value - The value to check
+ * @param {string} header - The column header (to help identify date columns)
+ * @returns {boolean}
+ */
+function isExcelSerialDate(value, header = '') {
+  if (typeof value !== 'number') return false;
+
+  // Check if the header suggests this is a date column
+  const dateHeaders = ['date', 'time', 'timestamp', 'created', 'trade date', 'settlement'];
+  const isDateColumn = dateHeaders.some(h => header.includes(h));
+
+  // Excel serial dates for reasonable years (1990-2100) are between ~32874 and ~73050
+  // Also check for datetime values which include decimals
+  const isInDateRange = value >= 32874 && value <= 73050;
+
+  return isDateColumn && isInDateRange;
+}
+
+/**
+ * Parse XLSX file and convert to CSV-like structure
+ * @param {ArrayBuffer} buffer - The file buffer
+ * @returns {Object} - { headers: string[], rows: string[][] }
+ */
+export function parseXLSX(buffer) {
+  // Read with cellDates option to try to get dates as JS Date objects
+  const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
+
+  // Get the first sheet
+  const firstSheetName = workbook.SheetNames[0];
+  const worksheet = workbook.Sheets[firstSheetName];
+
+  // Convert to JSON with header option and raw values
+  const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '', raw: false, dateNF: 'yyyy-mm-dd' });
+
+  if (jsonData.length === 0) {
+    return { headers: [], rows: [] };
+  }
+
+  // First row is headers
+  const headers = jsonData[0].map(h => String(h).toLowerCase().trim());
+
+  // Rest are data rows, convert all values to strings with special handling for dates
+  const rows = jsonData.slice(1)
+    .filter(row => row.some(cell => cell !== '')) // Filter empty rows
+    .map(row => row.map((cell, colIndex) => {
+      // If it's already a Date object, format it
+      if (cell instanceof Date) {
+        // Check if it has a time component
+        const hours = cell.getHours();
+        const minutes = cell.getMinutes();
+        const seconds = cell.getSeconds();
+
+        if (hours === 0 && minutes === 0 && seconds === 0) {
+          // Just a date
+          return cell.toISOString().slice(0, 10);
+        } else {
+          // Date with time
+          return cell.toISOString().replace('T', ' ').slice(0, 19);
+        }
+      }
+
+      // If it's a number that looks like an Excel serial date, convert it
+      if (typeof cell === 'number' && isExcelSerialDate(cell, headers[colIndex] || '')) {
+        return excelSerialToDate(cell);
+      }
+
+      // For all other values, convert to string
+      return String(cell).trim();
+    }));
+
+  return { headers, rows };
+}
 
 export function parseCSV(content) {
   const lines = content.trim().split(/\r?\n/);
@@ -42,7 +150,7 @@ export function parseCSV(content) {
   return { headers, rows };
 }
 
-const brokerParsers = {
+export const brokerParsers = {
   trading212: {
     name: "Trading 212",
     detect: (headers) => {
@@ -130,39 +238,60 @@ const brokerParsers = {
   freetrade: {
     name: "Freetrade",
     detect: (headers) => {
-      const required = ["title", "type", "quantity", "price per share"];
+      // Freetrade format: Type, Timestamp, Ticker, ISIN, Title, Buy / Sell, Quantity, Price per Share, Total Amount, FX Fee Amount, FX Rate, Account Currency, Instrument Currency
+      const required = ["type", "ticker", "quantity", "price per share", "total amount"];
       return required.every((h) => headers.some((header) => header.includes(h)));
     },
     parse: (rows, headers) => {
       const getIndex = (name) => headers.findIndex((h) => h.includes(name));
 
-      const titleIdx = getIndex("title");
       const typeIdx = getIndex("type");
-      const dateIdx = headers.findIndex((h) => h.includes("timestamp") || h.includes("date"));
+      const buySellIdx = headers.findIndex((h) => h === "buy / sell" || h === "buy/sell");
+      const tickerIdx = getIndex("ticker");
+      const titleIdx = getIndex("title");
+      const timestampIdx = getIndex("timestamp");
       const quantityIdx = getIndex("quantity");
       const priceIdx = getIndex("price per share");
       const totalIdx = getIndex("total amount");
-      const feeIdx = getIndex("fee");
-      const currencyIdx = getIndex("currency");
+      const fxFeeIdx = getIndex("fx fee amount");
+      const fxRateIdx = getIndex("fx rate");
+      const instrumentCurrencyIdx = getIndex("instrument currency");
+      const accountCurrencyIdx = getIndex("account currency");
 
       return rows
         .filter((row) => {
-          const type = (row[typeIdx] || "").toLowerCase();
-          return type === "buy" || type === "sell";
+          const type = (row[typeIdx] || "").toUpperCase();
+          // Only process ORDER type transactions (BUY/SELL)
+          return type === "ORDER";
         })
-        .map((row) => ({
-          date: row[dateIdx] || "",
-          type: row[typeIdx].toUpperCase(),
-          symbol: (row[titleIdx] || "").split(" ")[0] || "",
-          assetName: row[titleIdx],
-          quantity: parseFloat((row[quantityIdx] || "0").replace(/[^0-9.-]/g, "")) || 0,
-          pricePerUnit: parseFloat((row[priceIdx] || "0").replace(/[^0-9.-]/g, "")) || 0,
-          totalAmount: totalIdx !== -1 ? parseFloat((row[totalIdx] || "0").replace(/[^0-9.-]/g, "")) : null,
-          fees: feeIdx !== -1 ? parseFloat((row[feeIdx] || "0").replace(/[^0-9.-]/g, "")) || 0 : 0,
-          currency: currencyIdx !== -1 ? row[currencyIdx] : "GBP",
-          exchangeRate: 1,
-          broker: "Freetrade",
-        }));
+        .map((row) => {
+          const buySell = (row[buySellIdx] || "").toUpperCase();
+          const total = parseFloat((row[totalIdx] || "0").replace(/[^0-9.-]/g, "")) || 0;
+          const fxFee = fxFeeIdx !== -1 ? parseFloat((row[fxFeeIdx] || "0").replace(/[^0-9.-]/g, "")) || 0 : 0;
+          const fxRate = fxRateIdx !== -1 ? parseFloat(row[fxRateIdx]) || 1 : 1;
+
+          // Exclude FX fees from cost basis (matches Trading212/Schwab behavior)
+          const totalExcludingFxFees = Math.abs(total) - Math.abs(fxFee);
+
+          // Instrument currency is the stock's native currency (USD, EUR, GBP)
+          const instrumentCurrency = instrumentCurrencyIdx !== -1 ? (row[instrumentCurrencyIdx] || "GBP").toUpperCase() : "GBP";
+          // Account currency is always GBP for Freetrade
+          const accountCurrency = accountCurrencyIdx !== -1 ? (row[accountCurrencyIdx] || "GBP").toUpperCase() : "GBP";
+
+          return {
+            date: row[timestampIdx] || "",
+            type: buySell === "SELL" ? "SELL" : "BUY",
+            symbol: row[tickerIdx] || "",
+            assetName: titleIdx !== -1 ? row[titleIdx] : undefined,
+            quantity: parseFloat((row[quantityIdx] || "0").replace(/[^0-9.-]/g, "")) || 0,
+            pricePerUnit: parseFloat((row[priceIdx] || "0").replace(/[^0-9.-]/g, "")) || 0,
+            totalAmount: totalExcludingFxFees, // Use total excluding FX fees for cost basis
+            fees: fxFee, // Store FX fee separately
+            currency: accountCurrency, // Freetrade settles in GBP
+            exchangeRate: 1, // Already converted to GBP
+            broker: "Freetrade",
+          };
+        });
     },
   },
 
@@ -546,4 +675,53 @@ export function detectAndParseCSV(content) {
   }
 
   throw new Error("Unable to detect CSV format");
+}
+
+/**
+ * Parse XLSX file and detect broker format
+ * @param {ArrayBuffer} buffer - The file buffer
+ * @returns {Object} - { broker: string, transactions: Array }
+ */
+export function detectAndParseXLSX(buffer) {
+  const { headers, rows } = parseXLSX(buffer);
+
+  console.log('XLSX Parsed headers:', headers);
+  console.log('XLSX Parsed rows count:', rows.length);
+
+  if (headers.length === 0 || rows.length === 0) {
+    throw new Error(`XLSX file is empty or invalid. Headers: ${headers.length}, Rows: ${rows.length}`);
+  }
+
+  const parserOrder = ["trading212", "morganStanley", "interactiveBrokers", "freetrade", "hargreavesLansdown", "schwab", "ig", "generic"];
+
+  for (const parserKey of parserOrder) {
+    const parser = brokerParsers[parserKey];
+    if (parser.detect(headers)) {
+      return {
+        broker: parser.name,
+        transactions: parser.parse(rows, headers),
+      };
+    }
+  }
+
+  throw new Error("Unable to detect XLSX format");
+}
+
+/**
+ * Unified file parser that handles both CSV and XLSX files
+ * @param {File|Blob} file - The file object
+ * @returns {Promise<Object>} - { broker: string, transactions: Array }
+ */
+export async function parseFile(file) {
+  const fileName = file.name?.toLowerCase() || '';
+
+  if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+    // Parse as Excel file
+    const buffer = await file.arrayBuffer();
+    return detectAndParseXLSX(buffer);
+  } else {
+    // Parse as CSV (default)
+    const content = await file.text();
+    return detectAndParseCSV(content);
+  }
 }
