@@ -1,43 +1,180 @@
 'use client';
 
+import { useState, useRef } from 'react';
+
 export default function IncomeStep({ data, onChange, onNext, onSkip }) {
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState(null);
+  const fileInputRef = useRef(null);
+
   const handleChange = (field, value) => {
     onChange({ ...data, [field]: value });
   };
 
-  const hasData = data.grossPay || data.taxPaid || data.niPaid || data.pensionContributions;
-  const hasName = data.firstName && data.lastName;
+  const handleP60Upload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    setUploadResult(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('/api/parse-p60', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        setUploadResult({
+          success: false,
+          error: result.error,
+          isScannedImage: result.isScannedImage
+        });
+        return;
+      }
+
+      if (result.success) {
+        // Auto-fill the form with extracted data
+        const newData = { ...data };
+        if (result.data.grossPay) newData.grossPay = result.data.grossPay;
+        if (result.data.taxPaid) newData.taxPaid = result.data.taxPaid;
+        if (result.data.niPaid) newData.niPaid = result.data.niPaid;
+        onChange(newData);
+
+        setUploadResult({
+          success: true,
+          confidence: result.confidence,
+          warnings: result.warnings,
+          taxYear: result.data.taxYear,
+        });
+      } else {
+        setUploadResult({
+          success: false,
+          error: result.message || 'Could not extract data from P60',
+          warnings: result.warnings,
+        });
+      }
+    } catch (error) {
+      setUploadResult({
+        success: false,
+        error: 'Failed to upload file. Please try again.',
+      });
+    } finally {
+      setUploading(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const hasData = data.grossPay || data.taxPaid || data.niPaid;
 
   return (
     <div className="space-y-6">
       <div className="text-center mb-6">
-        <h2 className="text-2xl font-bold text-white mb-2">💼 Personal & Income Details</h2>
-        <p className="text-slate-400">Enter your details and information from your P60 or final payslip</p>
+        <h2 className="text-2xl font-bold text-white mb-2">💼 Income Details</h2>
+        <p className="text-slate-400">Upload your P60 or enter information manually</p>
       </div>
 
+      {/* P60 Upload Section */}
+      <div className="max-w-md mx-auto mb-6">
+        <div className="bg-slate-700/50 rounded-xl p-4 border border-slate-600 border-dashed">
+          <div className="text-center">
+            <div className="text-3xl mb-2">📄</div>
+            <p className="text-white font-medium mb-1">Upload P60</p>
+            <p className="text-slate-400 text-sm mb-3">We'll extract the details automatically</p>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.png,.jpg,.jpeg"
+              onChange={handleP60Upload}
+              className="hidden"
+              id="p60-upload"
+            />
+            <label
+              htmlFor="p60-upload"
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer transition-all ${
+                uploading
+                  ? 'bg-slate-600 text-slate-400 cursor-not-allowed'
+                  : 'bg-blue-600 text-white hover:bg-blue-500'
+              }`}
+            >
+              {uploading ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <span>📤</span>
+                  Choose File
+                </>
+              )}
+            </label>
+            <p className="text-slate-500 text-xs mt-2">Supports PDF, PNG, JPG</p>
+          </div>
+
+          {/* Upload Result */}
+          {uploadResult && (
+            <div className={`mt-4 p-3 rounded-lg ${
+              uploadResult.success
+                ? 'bg-green-900/30 border border-green-700/50'
+                : 'bg-red-900/30 border border-red-700/50'
+            }`}>
+              {uploadResult.success ? (
+                <div>
+                  <p className="text-green-400 font-medium flex items-center gap-2">
+                    <span>✓</span> P60 data extracted
+                    <span className={`text-xs px-2 py-0.5 rounded ${
+                      uploadResult.confidence === 'high'
+                        ? 'bg-green-700 text-green-200'
+                        : uploadResult.confidence === 'medium'
+                        ? 'bg-yellow-700 text-yellow-200'
+                        : 'bg-orange-700 text-orange-200'
+                    }`}>
+                      {uploadResult.confidence} confidence
+                    </span>
+                  </p>
+                  {uploadResult.taxYear && (
+                    <p className="text-slate-300 text-sm mt-1">Tax Year: {uploadResult.taxYear}</p>
+                  )}
+                  {uploadResult.warnings?.length > 0 && (
+                    <p className="text-yellow-400 text-sm mt-1">⚠️ {uploadResult.warnings.join(', ')}</p>
+                  )}
+                  <p className="text-slate-400 text-xs mt-2">Please verify the values below are correct</p>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-red-400 font-medium">✗ {uploadResult.error}</p>
+                  {uploadResult.isScannedImage && (
+                    <p className="text-slate-400 text-sm mt-1">
+                      Tip: If your P60 is a scanned image, please enter the details manually below.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-3 my-4">
+          <div className="flex-1 h-px bg-slate-700"></div>
+          <span className="text-slate-500 text-sm">or enter manually</span>
+          <div className="flex-1 h-px bg-slate-700"></div>
+        </div>
+      </div>
+
+      {/* Manual Entry Fields */}
       <div className="max-w-md mx-auto space-y-4">
-        {/* Name Fields */}
-        <div className="grid grid-cols-2 gap-4">
-          <TextInputField
-            label="First Name"
-            value={data.firstName}
-            onChange={(v) => handleChange('firstName', v)}
-            placeholder="John"
-          />
-          <TextInputField
-            label="Last Name"
-            value={data.lastName}
-            onChange={(v) => handleChange('lastName', v)}
-            placeholder="Smith"
-          />
-        </div>
-
-        <div className="border-t border-slate-700 my-4 pt-4">
-          <p className="text-slate-400 text-sm mb-4">Employment Income (from P60)</p>
-        </div>
-
         <InputField
-          label="Gross Pay"
+          label="Gross Pay (from P60)"
           value={data.grossPay}
           onChange={(v) => handleChange('grossPay', v)}
           placeholder="85000"
@@ -54,13 +191,6 @@ export default function IncomeStep({ data, onChange, onNext, onSkip }) {
           onChange={(v) => handleChange('niPaid', v)}
           placeholder="4500"
         />
-        <InputField
-          label="Pension Contributions"
-          value={data.pensionContributions}
-          onChange={(v) => handleChange('pensionContributions', v)}
-          placeholder="5000"
-        />
-        <p className="text-slate-500 text-xs">Pension contributions extend your basic rate band for CGT</p>
       </div>
 
       <div className="flex justify-center gap-4 mt-8">
@@ -83,21 +213,13 @@ export default function IncomeStep({ data, onChange, onNext, onSkip }) {
       <p className="text-center text-slate-500 text-xs mt-4">
         💡 If you skip, CGT will be calculated assuming basic rate band is available
       </p>
-    </div>
-  );
-}
 
-function TextInputField({ label, value, onChange, placeholder }) {
-  return (
-    <div>
-      <label className="block text-slate-300 text-sm font-medium mb-1">{label}</label>
-      <input
-        type="text"
-        value={value || ''}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="w-full px-4 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
-      />
+      <div className="mt-6 p-3 bg-slate-800/50 rounded-lg border border-slate-700">
+        <p className="text-slate-400 text-xs text-center">
+          🔒 <span className="text-slate-300">Your data is private.</span> We don't store your financial information.
+          All calculations happen in your browser and data is cleared when you close the page.
+        </p>
+      </div>
     </div>
   );
 }

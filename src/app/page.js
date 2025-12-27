@@ -13,12 +13,9 @@ export default function Home() {
   const [taxYear, setTaxYear] = useState('2024/25');
 
   const [incomeData, setIncomeData] = useState({
-    firstName: '',
-    lastName: '',
     grossPay: '',
     taxPaid: '',
     niPaid: '',
-    pensionContributions: '',
     skipped: false,
   });
 
@@ -56,7 +53,7 @@ export default function Home() {
   const handleStartOver = () => {
     resetSession(); // Generate new session ID
     setCurrentStep(1);
-    setIncomeData({ firstName: '', lastName: '', grossPay: '', taxPaid: '', niPaid: '', pensionContributions: '', skipped: false });
+    setIncomeData({ grossPay: '', taxPaid: '', niPaid: '', skipped: false });
     setCgtResult(null);
   };
 
