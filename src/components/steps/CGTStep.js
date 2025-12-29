@@ -6,6 +6,7 @@ import { downloadCGTReport } from '@/lib/pdf-generator';
 import {
   trackBrokerSelected,
   trackBrokerFileUpload,
+  trackFilesAdded,
   trackCalculationStarted,
   trackCalculationResult
 } from '@/lib/analytics';
@@ -59,11 +60,24 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
     });
 
     const idx = brokerUploads.findIndex(u => u.broker.id === selectedBroker.id);
+    let updatedBrokerUploads;
     if (idx >= 0) {
-      setBrokerUploads(prev => prev.map((u, i) => i === idx ? { ...u, files: [...u.files, ...currentFiles] } : u));
+      updatedBrokerUploads = brokerUploads.map((u, i) => i === idx ? { ...u, files: [...u.files, ...currentFiles] } : u);
+      setBrokerUploads(updatedBrokerUploads);
     } else {
-      setBrokerUploads(prev => [...prev, { broker: selectedBroker, files: currentFiles }]);
+      updatedBrokerUploads = [...brokerUploads, { broker: selectedBroker, files: currentFiles }];
+      setBrokerUploads(updatedBrokerUploads);
     }
+
+    // Track that user clicked "Add Files" (after files are added to the list)
+    const totalFilesAfterAdd = updatedBrokerUploads.reduce((sum, u) => sum + u.files.length, 0);
+    trackFilesAdded({
+      brokerId: selectedBroker.id,
+      fileCount: currentFiles.length,
+      totalBrokers: updatedBrokerUploads.length,
+      totalFiles: totalFilesAfterAdd,
+    });
+
     setSelectedBroker(null);
     setCurrentFiles([]);
   };

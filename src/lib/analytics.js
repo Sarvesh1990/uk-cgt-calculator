@@ -175,6 +175,19 @@ export function trackBrokerFileUpload(data = {}) {
 }
 
 /**
+ * Track when user adds files to broker uploads list
+ * @param {Object} data - Files added details
+ */
+export function trackFilesAdded(data = {}) {
+  trackEvent('files_added_to_broker', {
+    brokerId: data.brokerId,
+    fileCount: data.fileCount,
+    totalBrokers: data.totalBrokers,
+    totalFiles: data.totalFiles,
+  });
+}
+
+/**
  * Track CGT calculation initiated with broker details
  * @param {Object} data - Brokers used
  */
