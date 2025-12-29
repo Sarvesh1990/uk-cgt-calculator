@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ad Creative 3 - Problem/Solution</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #1a1a2e; }
+
+    /* 1080x1080 Square Format */
+    .ad-container {
+      width: 1080px;
+      height: 1080px;
+      background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+      display: flex;
+      flex-direction: column;
+      padding: 70px;
+      position: relative;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 50px;
+    }
+
+    .emoji-row {
+      font-size: 60px;
+      margin-bottom: 25px;
+    }
+
+    .headline {
+      font-size: 58px;
+      font-weight: 800;
+      color: #fff;
+      line-height: 1.2;
+    }
+
+    .highlight { color: #f59e0b; }
+
+    .comparison {
+      display: grid;
+      grid-template-columns: 1fr 80px 1fr;
+      gap: 20px;
+      align-items: center;
+      margin-bottom: 50px;
+    }
+
+    .box {
+      padding: 35px;
+      border-radius: 24px;
+      height: 100%;
+    }
+
+    .box-old {
+      background: rgba(239, 68, 68, 0.1);
+      border: 2px solid rgba(239, 68, 68, 0.3);
+    }
+
+    .box-new {
+      background: rgba(16, 185, 129, 0.1);
+      border: 2px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .box-title {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 25px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .box-old .box-title { color: #f87171; }
+    .box-new .box-title { color: #34d399; }
+
+    .box-list {
+      list-style: none;
+    }
+
+    .box-list li {
+      font-size: 22px;
+      margin-bottom: 18px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .box-old .box-list li { color: #fca5a5; }
+    .box-new .box-list li { color: #6ee7b7; }
+
+    .vs-circle {
+      width: 80px;
+      height: 80px;
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 24px;
+      font-weight: 800;
+    }
+
+    .bottom-section {
+      text-align: center;
+    }
+
+    .url {
+      font-size: 32px;
+      color: #60a5fa;
+      font-weight: 600;
+      margin-bottom: 30px;
+    }
+
+    .cta {
+      background: linear-gradient(90deg, #10b981, #059669);
+      color: white;
+      font-size: 32px;
+      font-weight: 700;
+      padding: 24px 70px;
+      border-radius: 16px;
+      border: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .free-badge {
+      position: absolute;
+      top: 50px;
+      right: 50px;
+      background: #f59e0b;
+      color: #1a1a2e;
+      font-size: 22px;
+      font-weight: 800;
+      padding: 14px 28px;
+      border-radius: 10px;
+      transform: rotate(3deg);
+    }
+  </style>
+</head>
+<body>
+  <div class="ad-container">
+    <div class="free-badge">🎉 FREE TOOL</div>
+
+    <div class="header">
+      <div class="emoji-row">🇬🇧 📊 💷</div>
+      <h1 class="headline">
+        Stop Overpaying on<br>
+        <span class="highlight">Capital Gains Tax</span>
+      </h1>
+    </div>
+
+    <div class="comparison">
+      <div class="box box-old">
+        <div class="box-title">❌ The Old Way</div>
+        <ul class="box-list">
+          <li>📝 Manual spreadsheets</li>
+          <li>💸 £500+ accountant fees</li>
+          <li>⏰ Hours of calculations</li>
+          <li>😰 Fear of HMRC mistakes</li>
+        </ul>
+      </div>
+
+      <div class="vs-circle">VS</div>
+
+      <div class="box box-new">
+        <div class="box-title">✅ The Easy Way</div>
+        <ul class="box-list">
+          <li>📤 Upload broker CSV</li>
+          <li>🆓 100% free forever</li>
+          <li>⚡ Results in 2 minutes</li>
+          <li>✓ HMRC compliant rules</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="bottom-section">
+      <button class="cta">
+        <span>🧮</span>
+        Calculate Now - It's Free
+      </button>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ad Creative 2 - RSU Focus</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #1a1a2e; }
+
+    /* 1080x1080 Square Format */
+    .ad-container {
+      width: 1080px;
+      height: 1080px;
+      background: linear-gradient(180deg, #0c1222 0%, #1a2744 100%);
+      display: flex;
+      flex-direction: column;
+      padding: 70px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .top-section {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+
+    .pain-point {
+      background: rgba(239, 68, 68, 0.15);
+      border: 2px solid rgba(239, 68, 68, 0.3);
+      border-radius: 16px;
+      padding: 20px 40px;
+      display: inline-block;
+      margin-bottom: 30px;
+    }
+
+    .pain-point-text {
+      color: #fca5a5;
+      font-size: 28px;
+      font-weight: 600;
+    }
+
+    .headline {
+      font-size: 64px;
+      font-weight: 800;
+      color: #fff;
+      line-height: 1.15;
+      margin-bottom: 20px;
+    }
+
+    .highlight { color: #60a5fa; }
+    .highlight-green { color: #34d399; }
+
+    .subheadline {
+      font-size: 30px;
+      color: #94a3b8;
+      margin-bottom: 40px;
+    }
+
+    /* Mock Calculator UI */
+    .calculator-preview {
+      background: #1e293b;
+      border-radius: 24px;
+      padding: 30px;
+      border: 1px solid #334155;
+      box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+      margin-bottom: 40px;
+    }
+
+    .calc-header {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      margin-bottom: 25px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid #334155;
+    }
+
+    .calc-icon { font-size: 36px; }
+    .calc-title { color: #fff; font-size: 26px; font-weight: 700; }
+    .calc-badge {
+      background: #10b981;
+      color: white;
+      font-size: 14px;
+      padding: 6px 14px;
+      border-radius: 20px;
+      margin-left: auto;
+      font-weight: 600;
+    }
+
+    .calc-stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 20px;
+    }
+
+    .stat {
+      text-align: center;
+      padding: 20px;
+      background: #0f172a;
+      border-radius: 16px;
+    }
+
+    .stat-value {
+      font-size: 32px;
+      font-weight: 800;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+
+    .stat-value.green { color: #34d399; }
+    .stat-value.red { color: #f87171; }
+
+    .stat-label {
+      color: #64748b;
+      font-size: 16px;
+      font-weight: 500;
+    }
+
+    .brokers {
+      display: flex;
+      justify-content: center;
+      gap: 30px;
+      margin-bottom: 40px;
+    }
+
+    .broker {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(255,255,255,0.05);
+      padding: 14px 28px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .broker-icon { font-size: 28px; }
+    .broker-name { color: #e2e8f0; font-size: 22px; font-weight: 500; }
+
+    .cta-section {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 30px;
+    }
+
+    .cta {
+      background: linear-gradient(90deg, #3b82f6, #2563eb);
+      color: white;
+      font-size: 28px;
+      font-weight: 700;
+      padding: 22px 50px;
+      border-radius: 14px;
+      border: none;
+    }
+
+    .free-text {
+      color: #34d399;
+      font-size: 24px;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <div class="ad-container">
+    <div class="top-section">
+      <div class="pain-point">
+        <span class="pain-point-text">😰 Sold RSUs this year?</span>
+      </div>
+      <h1 class="headline">
+        Calculate Your<br>
+        <span class="highlight">UK Capital Gains Tax</span><br>
+        in <span class="highlight-green">2 Minutes</span>
+      </h1>
+      <p class="subheadline">No spreadsheets. No accountant fees. Just upload & calculate.</p>
+    </div>
+
+    <div class="calculator-preview">
+      <div class="calc-header">
+        <span class="calc-icon">🧮</span>
+        <span class="calc-title">CGT Calculator</span>
+        <span class="calc-badge">HMRC Ready</span>
+      </div>
+      <div class="calc-stats">
+        <div class="stat">
+          <div class="stat-value">65</div>
+          <div class="stat-label">Disposals</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value green">£8,420</div>
+          <div class="stat-label">Net Gain</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value">£3,000</div>
+          <div class="stat-label">Exemption</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value red">£1,084</div>
+          <div class="stat-label">Tax Due</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="brokers">
+      <div class="broker">
+        <span class="broker-icon">🏦</span>
+        <span class="broker-name">Charles Schwab</span>
+      </div>
+      <div class="broker">
+        <span class="broker-icon">🏛️</span>
+        <span class="broker-name">Morgan Stanley</span>
+      </div>
+      <div class="broker">
+        <span class="broker-icon">📈</span>
+        <span class="broker-name">Trading 212</span>
+      </div>
+    </div>
+
+    <div class="cta-section">
+      <button class="cta">Calculate My CGT →</button>
+      <span class="free-text">✓ 100% Free</span>
+    </div>
+  </div>
+</body>
+</html>
