@@ -22,6 +22,9 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
   const [showDetails, setShowDetails] = useState(false);
   const [viewMode, setViewMode] = useState('disposals'); // 'disposals' or 'all-transactions'
   const [transactionAdjustments, setTransactionAdjustments] = useState({}); // { 'brokerId_index': { pricePerUnit, totalAmount } }
+  const [manualTransactions, setManualTransactions] = useState([]); // New manual transactions
+  const [deletedTransactionIds, setDeletedTransactionIds] = useState(new Set()); // Track deleted transactions
+  const [showAddTransactionForm, setShowAddTransactionForm] = useState(false);
 
   const totalFilesCount = brokerUploads.reduce((sum, u) => sum + u.files.length, 0) + currentFiles.length;
 
@@ -127,6 +130,12 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
 
       // Pass transaction adjustments as JSON
       formData.append('adjustments', JSON.stringify(transactionAdjustments));
+
+      // Pass deleted transaction IDs
+      formData.append('deletedTransactionIds', JSON.stringify(Array.from(deletedTransactionIds)));
+
+      // Pass manual transactions
+      formData.append('manualTransactions', JSON.stringify(manualTransactions));
 
       const res = await fetch('/api/calculate', { method: 'POST', body: formData });
       const data = await res.json();
@@ -371,6 +380,26 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
                   <div className="p-3 bg-blue-900/30 border border-blue-700 rounded text-blue-200 text-sm">
                     💡 <strong>Tip:</strong> Click on Price values to adjust them. Amount is calculated automatically from price × quantity. Click "Recalculate" to apply adjustments and recalculate CGT.
                   </div>
+                  
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setShowAddTransactionForm(!showAddTransactionForm)}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded font-medium text-sm"
+                    >
+                      {showAddTransactionForm ? '✕ Cancel' : '+ Add Transaction'}
+                    </button>
+                  </div>
+
+                  {showAddTransactionForm && (
+                    <AddTransactionForm
+                      onAdd={(txn) => {
+                        setManualTransactions(prev => [...prev, { ...txn, __txnId: `manual_${Date.now()}_${Math.random()}` }]);
+                        setShowAddTransactionForm(false);
+                      }}
+                      onCancel={() => setShowAddTransactionForm(false)}
+                    />
+                  )}
+
                   {cgtResult?.parsedFiles && cgtResult.parsedFiles.length > 0 ? (
                     cgtResult.parsedFiles.map((file, fileIdx) => (
                       <div key={fileIdx} className="bg-slate-800/50 rounded-lg p-4">
@@ -396,6 +425,9 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
                                   const displayAmount = adjustment?.totalAmount !== undefined ? adjustment.totalAmount : (txn.totalAmount || txn.amount || 0);
                                   const hasAdjustment = adjustment !== undefined;
                                   const isFetchedPrice = txn.priceSource === 'yahoo_finance_historical';
+                                  const isDeleted = deletedTransactionIds.has(txn.__txnId);
+
+                                  if (isDeleted) return null;
 
                                   return (
                               <tr key={txnIdx} className={`border-b border-slate-700/50 hover:bg-slate-700/30 ${hasAdjustment ? 'bg-amber-900/20' : ''}`}>
@@ -436,7 +468,16 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
                                     className="w-20 px-2 py-1 bg-slate-700 text-white text-right rounded border border-slate-600 focus:border-blue-500 focus:outline-none text-sm"
                                   />
                                 </td>
-                                <td className="p-2 text-slate-300 text-right">{formatCurrency(displayPrice * txn.quantity)}</td>
+                                <td className="p-2 text-slate-300 text-right flex items-center justify-between">
+                                  <span>{formatCurrency(displayPrice * txn.quantity)}</span>
+                                  <button
+                                    onClick={() => setDeletedTransactionIds(prev => new Set([...prev, txn.__txnId]))}
+                                    className="ml-2 text-red-400 hover:text-red-300 text-xs font-medium px-1"
+                                    title="Delete transaction"
+                                  >
+                                    ✕
+                                  </button>
+                                </td>
                               </tr>
                                   );
                                 })}
@@ -452,7 +493,82 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
                     <p className="text-slate-400 text-center py-8">No transaction data available</p>
                   )}
 
-                  {Object.keys(transactionAdjustments).length > 0 && (
+                  {manualTransactions.length > 0 && (
+                    <div className="bg-slate-800/50 rounded-lg p-4">
+                      <h4 className="text-white font-medium mb-3">Manual Entries</h4>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="text-left text-slate-400 border-b border-slate-700">
+                              <th className="p-2">Date</th>
+                              <th className="p-2">Action</th>
+                              <th className="p-2">Symbol</th>
+                              <th className="p-2 text-right">Quantity</th>
+                              <th className="p-2 text-right">Price</th>
+                              <th className="p-2 text-right">Amount</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {manualTransactions.map((txn, txnIdx) => {
+                              const adjustKey = `manual_${txnIdx}`;
+                              const adjustment = transactionAdjustments[adjustKey];
+                              const displayPrice = adjustment?.pricePerUnit !== undefined ? adjustment.pricePerUnit : txn.pricePerUnit;
+                              const isDeleted = deletedTransactionIds.has(txn.__txnId);
+
+                              if (isDeleted) return null;
+
+                              return (
+                                <tr key={txnIdx} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                                  <td className="p-2 text-white">{txn.date}</td>
+                                  <td className="p-2 text-slate-300 text-sm">
+                                    <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                      txn.type === 'BUY' ? 'bg-green-900/30 text-green-400' :
+                                      txn.type === 'SELL' ? 'bg-red-900/30 text-red-400' :
+                                      'bg-slate-700 text-slate-300'
+                                    }`}>
+                                      {txn.type}
+                                    </span>
+                                  </td>
+                                  <td className="p-2 text-white font-medium">{txn.symbol}</td>
+                                  <td className="p-2 text-slate-300 text-right">{txn.quantity}</td>
+                                  <td className="p-2 text-right">
+                                    <input
+                                      type="text"
+                                      inputMode="decimal"
+                                      value={displayPrice}
+                                      onChange={(e) => {
+                                        const newPrice = parseFloat(e.target.value) || 0;
+                                        const newAmount = newPrice * txn.quantity;
+                                        setTransactionAdjustments(prev => ({
+                                          ...prev,
+                                          [adjustKey]: {
+                                            pricePerUnit: newPrice,
+                                            totalAmount: newAmount
+                                          }
+                                        }));
+                                      }}
+                                      className="w-20 px-2 py-1 bg-slate-700 text-white text-right rounded border border-slate-600 focus:border-blue-500 focus:outline-none text-sm"
+                                    />
+                                  </td>
+                                  <td className="p-2 text-slate-300 text-right flex items-center justify-between">
+                                    <span>{formatCurrency(displayPrice * txn.quantity)}</span>
+                                    <button
+                                      onClick={() => setDeletedTransactionIds(prev => new Set([...prev, txn.__txnId]))}
+                                      className="ml-2 text-red-400 hover:text-red-300 text-xs font-medium px-1"
+                                      title="Delete transaction"
+                                    >
+                                      ✕
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                  {(Object.keys(transactionAdjustments).length > 0 || deletedTransactionIds.size > 0) && (
                     <div className="flex justify-center pt-4">
                       <button
                         onClick={() => {
@@ -1188,3 +1304,121 @@ function DividendSection({ dividendData, taxYear }) {
     </div>
   );
 }
+
+function AddTransactionForm({ onAdd, onCancel }) {
+  const [formData, setFormData] = useState({
+    date: new Date().toISOString().split('T')[0],
+    type: 'BUY',
+    symbol: '',
+    quantity: '',
+    pricePerUnit: '',
+  });
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!formData.symbol || !formData.quantity || !formData.pricePerUnit) {
+      alert('Please fill in all fields');
+      return;
+    }
+    onAdd({
+      ...formData,
+      quantity: parseFloat(formData.quantity),
+      pricePerUnit: parseFloat(formData.pricePerUnit),
+      totalAmount: parseFloat(formData.quantity) * parseFloat(formData.pricePerUnit),
+      broker: 'Manual Entry',
+      type: formData.type,
+    });
+    setFormData({
+      date: new Date().toISOString().split('T')[0],
+      type: 'BUY',
+      symbol: '',
+      quantity: '',
+      pricePerUnit: '',
+    });
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="bg-slate-800/50 rounded-lg p-4 border border-slate-700 space-y-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-slate-300 mb-1">Date</label>
+          <input
+            type="date"
+            name="date"
+            value={formData.date}
+            onChange={handleChange}
+            className="w-full px-2 py-1 bg-slate-700 text-white rounded border border-slate-600 focus:border-blue-500 focus:outline-none text-sm"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-300 mb-1">Type</label>
+          <select
+            name="type"
+            value={formData.type}
+            onChange={handleChange}
+            className="w-full px-2 py-1 bg-slate-700 text-white rounded border border-slate-600 focus:border-blue-500 focus:outline-none text-sm"
+          >
+            <option value="BUY">BUY</option>
+            <option value="SELL">SELL</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-300 mb-1">Symbol</label>
+          <input
+            type="text"
+            name="symbol"
+            value={formData.symbol}
+            onChange={handleChange}
+            placeholder="e.g., GOOG"
+            className="w-full px-2 py-1 bg-slate-700 text-white rounded border border-slate-600 focus:border-blue-500 focus:outline-none text-sm"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-300 mb-1">Quantity</label>
+          <input
+            type="number"
+            name="quantity"
+            step="0.01"
+            value={formData.quantity}
+            onChange={handleChange}
+            placeholder="0"
+            className="w-full px-2 py-1 bg-slate-700 text-white rounded border border-slate-600 focus:border-blue-500 focus:outline-none text-sm"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-300 mb-1">Price</label>
+          <input
+            type="number"
+            name="pricePerUnit"
+            step="0.01"
+            value={formData.pricePerUnit}
+            onChange={handleChange}
+            placeholder="0.00"
+            className="w-full px-2 py-1 bg-slate-700 text-white rounded border border-slate-600 focus:border-blue-500 focus:outline-none text-sm"
+          />
+        </div>
+      </div>
+      <div className="flex gap-2 justify-end">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded font-medium text-sm"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          className="px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded font-medium text-sm"
+        >
+          Add Transaction
+        </button>
+      </div>
+    </form>
+  );
+}
+
