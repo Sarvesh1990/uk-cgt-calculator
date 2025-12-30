@@ -185,21 +185,26 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
   };
 
   const yearData = cgtResult?.report?.taxYears?.find(y => y.taxYear === taxYear);
+  const hasYearData = !!yearData;
 
-  // Results view
-  if (cgtResult && yearData) {
+  // Results view - show whenever we have a calculation result, even if
+  // there are no disposals for the selected tax year (still show parsed files)
+  if (cgtResult) {
     return (
       <div className="space-y-6">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-white mb-2">✅ CGT Calculated</h2>
+          <h2 className="text-2xl font-bold text-white mb-2">{hasYearData ? '✅ CGT Calculated' : '📁 CGT Results'}</h2>
           <p className="text-slate-400">Tax Year {taxYear}</p>
+          {!hasYearData && (
+            <p className="text-slate-400 text-sm mt-2">No disposals for this tax year — showing parsed transactions instead.</p>
+          )}
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <StatCard label="Disposals" value={yearData.numberOfDisposals} />
-          <StatCard label="Net Gain" value={formatCurrency(yearData.netGain)} color={yearData.netGain >= 0 ? 'green' : 'red'} />
-          <StatCard label="Taxable" value={formatCurrency(yearData.taxableGain)} />
-          <StatCard label="Exemption" value={formatCurrency(yearData.annualExemption)} />
+          <StatCard label="Disposals" value={yearData?.numberOfDisposals ?? 0} />
+          <StatCard label="Net Gain" value={formatCurrency(yearData?.netGain ?? 0)} color={(yearData?.netGain ?? 0) >= 0 ? 'green' : 'red'} />
+          <StatCard label="Taxable" value={formatCurrency(yearData?.taxableGain ?? 0)} />
+          <StatCard label="Exemption" value={formatCurrency(yearData?.annualExemption ?? 0)} />
         </div>
         {/* Download PDF Button */}
         <div className="flex justify-center">
@@ -212,24 +217,24 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
           </button>
         </div>
 
-          {yearData.rateChange && (
+          {yearData?.rateChange && (
             <div className="bg-blue-900/30 border border-blue-700 rounded-lg p-4">
               <p className="text-blue-400 font-medium mb-2">⚠️ CGT Rates Changed 30 Oct 2024</p>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <p className="text-slate-400">Before 30 Oct</p>
-                  <p className="text-white">{yearData.rateChange.preOctober.disposalCount} disposals</p>
-                  <p className="text-green-400">Gains: {formatCurrency(yearData.rateChange.preOctober.gains)}</p>
-                  <p className="text-red-400">Losses: {formatCurrency(yearData.rateChange.preOctober.losses)}</p>
-                  <p className="text-white font-medium">Net: {formatCurrency(yearData.rateChange.preOctober.netGain)}</p>
+                  <p className="text-white">{yearData?.rateChange?.preOctober?.disposalCount} disposals</p>
+                  <p className="text-green-400">Gains: {formatCurrency(yearData?.rateChange?.preOctober?.gains)}</p>
+                  <p className="text-red-400">Losses: {formatCurrency(yearData?.rateChange?.preOctober?.losses)}</p>
+                  <p className="text-white font-medium">Net: {formatCurrency(yearData?.rateChange?.preOctober?.netGain)}</p>
                   <p className="text-slate-500 text-xs mt-1">10% / 20%</p>
                 </div>
                 <div>
                   <p className="text-slate-400">From 30 Oct</p>
-                  <p className="text-white">{yearData.rateChange.postOctober.disposalCount} disposals</p>
-                  <p className="text-green-400">Gains: {formatCurrency(yearData.rateChange.postOctober.gains)}</p>
-                  <p className="text-red-400">Losses: {formatCurrency(yearData.rateChange.postOctober.losses)}</p>
-                  <p className="text-white font-medium">Net: {formatCurrency(yearData.rateChange.postOctober.netGain)}</p>
+                  <p className="text-white">{yearData?.rateChange?.postOctober?.disposalCount} disposals</p>
+                  <p className="text-green-400">Gains: {formatCurrency(yearData?.rateChange?.postOctober?.gains)}</p>
+                  <p className="text-red-400">Losses: {formatCurrency(yearData?.rateChange?.postOctober?.losses)}</p>
+                  <p className="text-white font-medium">Net: {formatCurrency(yearData?.rateChange?.postOctober?.netGain)}</p>
                   <p className="text-slate-500 text-xs mt-1">18% / 24%</p>
                 </div>
               </div>
@@ -248,7 +253,7 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
           {showDetails && (
             <div className="space-y-6">
               {/* Section 104 Holdings at Start of Tax Year */}
-              {yearData.section104Start && yearData.section104Start.length > 0 && (
+              {yearData?.section104Start && yearData.section104Start.length > 0 && (
                 <div className="bg-slate-800/50 rounded-lg p-4">
                   <h3 className="text-white font-medium mb-3 flex items-center gap-2">
                     <span className="text-purple-400">📊</span>
@@ -289,7 +294,7 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
                       : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
                   }`}
                 >
-                  📋 Disposals ({yearData.disposals.length})
+                  📋 Disposals ({yearData?.disposals?.length || 0})
                 </button>
                 <button
                   onClick={() => setViewMode('all-transactions')}
@@ -326,7 +331,7 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
                     </tr>
                   </thead>
                   <tbody>
-                    {yearData.disposals.map((d, i) => (
+                      {(yearData?.disposals || []).map((d, i) => (
                       <tr key={i} className="border-b border-slate-700/50 hover:bg-slate-700/30">
                         <td className="p-2 text-white">{d.date}</td>
                         <td className="p-2 text-white font-medium">{d.symbol}</td>
@@ -345,7 +350,7 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
 
                 {/* Mobile cards - shown only on mobile */}
                 <div className="md:hidden space-y-3">
-                  {yearData.disposals.map((d, i) => (
+                  {(yearData?.disposals || []).map((d, i) => (
                     <div key={i} className="bg-slate-700/50 rounded-lg p-4 border border-slate-600/50">
                       <div className="flex justify-between items-start mb-3">
                         <div>
@@ -597,7 +602,7 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
               )}
 
               {/* Section 104 Holdings at End of Tax Year */}
-              {yearData.section104End && yearData.section104End.length > 0 && (
+              {yearData?.section104End && yearData.section104End.length > 0 && (
                 <div className="bg-slate-800/50 rounded-lg p-4">
                   <h3 className="text-white font-medium mb-3 flex items-center gap-2">
                     <span className="text-green-400">📊</span>
