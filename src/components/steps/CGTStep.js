@@ -20,6 +20,7 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [showDetails, setShowDetails] = useState(false);
+  const [viewMode, setViewMode] = useState('disposals'); // 'disposals' or 'all-transactions'
 
   const totalFilesCount = brokerUploads.reduce((sum, u) => sum + u.files.length, 0) + currentFiles.length;
 
@@ -255,7 +256,32 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
                 </div>
               )}
 
+              {/* Transaction View Toggle */}
+              <div className="flex gap-2 mb-4">
+                <button
+                  onClick={() => setViewMode('disposals')}
+                  className={`flex-1 py-2 px-4 rounded-lg font-medium transition-colors ${
+                    viewMode === 'disposals'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  }`}
+                >
+                  📋 Disposals ({yearData.disposals.length})
+                </button>
+                <button
+                  onClick={() => setViewMode('all-transactions')}
+                  className={`flex-1 py-2 px-4 rounded-lg font-medium transition-colors ${
+                    viewMode === 'all-transactions'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  }`}
+                >
+                  📊 All Transactions ({cgtResult?.totalTransactions || 0})
+                </button>
+              </div>
+
               {/* Disposals Table - responsive */}
+              {viewMode === 'disposals' && (
               <div className="overflow-x-auto overflow-y-visible">
                 <h3 className="text-white font-medium mb-3 flex items-center gap-2">
                   <span className="text-blue-400">📋</span>
@@ -333,6 +359,64 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
                   ))}
                 </div>
               </div>
+              )}
+
+              {/* All Transactions View */}
+              {viewMode === 'all-transactions' && (
+                <div className="space-y-6">
+                  {cgtResult?.parsedFiles && cgtResult.parsedFiles.length > 0 ? (
+                    cgtResult.parsedFiles.map((file, fileIdx) => (
+                      <div key={fileIdx} className="bg-slate-800/50 rounded-lg p-4">
+                        <h4 className="text-white font-medium mb-3">{file.broker} - {file.fileName}</h4>
+                        {file.transactions && file.transactions.length > 0 ? (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="text-left text-slate-400 border-b border-slate-700">
+                                  <th className="p-2">Date</th>
+                                  <th className="p-2">Action</th>
+                                  <th className="p-2">Symbol</th>
+                                  <th className="p-2 text-right">Quantity</th>
+                                  <th className="p-2 text-right">Price</th>
+                                  <th className="p-2 text-right">Amount</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {file.transactions.map((txn, txnIdx) => (
+                              <tr key={txnIdx} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                                <td className="p-2 text-white">{txn.date}</td>
+                                <td className="p-2 text-slate-300 text-sm">
+                                  <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                    txn.type === 'BUY' ? 'bg-green-900/30 text-green-400' :
+                                    txn.type === 'SELL' ? 'bg-red-900/30 text-red-400' :
+                                    'bg-slate-700 text-slate-300'
+                                  }`}>
+                                    {txn.type}
+                                  </span>
+                                </td>
+                                <td className="p-2 text-white font-medium">{txn.symbol}</td>
+                                <td className="p-2 text-slate-300 text-right">{txn.quantity}</td>
+                                <td className="p-2 text-slate-300 text-right">
+                                  {txn.pricePerUnit && txn.pricePerUnit > 0 ? formatCurrency(txn.pricePerUnit) : (txn.price ? formatCurrency(txn.price) : '—')}
+                                </td>
+                                <td className="p-2 text-slate-300 text-right">
+                                  {txn.totalAmount ? formatCurrency(txn.totalAmount) : (txn.amount ? formatCurrency(txn.amount) : (txn.pricePerUnit ? formatCurrency(txn.quantity * txn.pricePerUnit) : '—'))}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                        ) : (
+                          <p className="text-slate-400 text-sm">No transactions in this file</p>
+                        )}
+                    </div>
+                    ))
+                  ) : (
+                    <p className="text-slate-400 text-center py-8">No transaction data available</p>
+                  )}
+                </div>
+              )}
 
               {/* Section 104 Holdings at End of Tax Year */}
               {yearData.section104End && yearData.section104End.length > 0 && (

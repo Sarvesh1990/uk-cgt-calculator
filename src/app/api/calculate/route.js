@@ -118,9 +118,10 @@ export async function POST(request) {
       }
 
       parsedFiles.push({
-        filename: file.name,
+        fileName: file.name,
         broker: brokerName,
         transactionCount: transactions.length,
+        transactions: transactions,
       });
 
       allTransactions = allTransactions.concat(transactions);
@@ -288,6 +289,21 @@ export async function POST(request) {
     }
 
     const report = calculateCGT(allTransactions);
+
+    // Update parsedFiles with enriched transaction data (historical prices, exchange rates, etc.)
+    parsedFiles.forEach(file => {
+      file.transactions = file.transactions.map(txn => {
+        // Find the enriched version of this transaction
+        const enrichedTxn = allTransactions.find(t =>
+          t.date === txn.date &&
+          t.symbol === txn.symbol &&
+          t.type === txn.type &&
+          t.quantity === txn.quantity
+        );
+        // Return enriched data if found, otherwise return original
+        return enrichedTxn || txn;
+      });
+    });
 
     return NextResponse.json({
       success: true,
