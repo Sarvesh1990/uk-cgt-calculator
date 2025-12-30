@@ -11,6 +11,7 @@ import {
   trackCalculationResult
 } from '@/lib/analytics';
 import { trackCGTCalculationComplete } from '@/lib/meta-pixel';
+import { trackCGTCalculationConversion } from '@/lib/google-ads';
 
 export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, onBack, onNext, onSkip }) {
   const [brokerUploads, setBrokerUploads] = useState([]);
@@ -145,6 +146,15 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
 
       // Fire Meta Pixel conversion event
       trackCGTCalculationComplete({
+        taxYear,
+        brokers: brokerIds,
+        disposals: resultYear?.numberOfDisposals || 0,
+        netGain: resultYear?.netGain || 0,
+        taxableGain: resultYear?.taxableGain || 0,
+      });
+
+      // Fire Google Ads conversion event
+      trackCGTCalculationConversion({
         taxYear,
         brokers: brokerIds,
         disposals: resultYear?.numberOfDisposals || 0,
