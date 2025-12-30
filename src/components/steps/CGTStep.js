@@ -369,7 +369,7 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
               {viewMode === 'all-transactions' && (
                 <div className="space-y-6">
                   <div className="p-3 bg-blue-900/30 border border-blue-700 rounded text-blue-200 text-sm">
-                    💡 <strong>Tip:</strong> Click on Amount values to adjust them if needed. Click "Recalculate" to apply adjustments and recalculate CGT.
+                    💡 <strong>Tip:</strong> Click on Price values to adjust them. Amount is calculated automatically from price × quantity. Click "Recalculate" to apply adjustments and recalculate CGT.
                   </div>
                   {cgtResult?.parsedFiles && cgtResult.parsedFiles.length > 0 ? (
                     cgtResult.parsedFiles.map((file, fileIdx) => (
@@ -384,6 +384,7 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
                                   <th className="p-2">Action</th>
                                   <th className="p-2">Symbol</th>
                                   <th className="p-2 text-right">Quantity</th>
+                                  <th className="p-2 text-right">Price</th>
                                   <th className="p-2 text-right">Amount</th>
                                 </tr>
                               </thead>
@@ -394,32 +395,40 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
                                   const displayPrice = adjustment?.pricePerUnit !== undefined ? adjustment.pricePerUnit : (txn.pricePerUnit || txn.price || 0);
                                   const displayAmount = adjustment?.totalAmount !== undefined ? adjustment.totalAmount : (txn.totalAmount || txn.amount || 0);
                                   const hasAdjustment = adjustment !== undefined;
+                                  const isFetchedPrice = txn.priceSource === 'yahoo_finance_historical';
 
                                   return (
                               <tr key={txnIdx} className={`border-b border-slate-700/50 hover:bg-slate-700/30 ${hasAdjustment ? 'bg-amber-900/20' : ''}`}>
                                 <td className="p-2 text-white">{txn.date}</td>
                                 <td className="p-2 text-slate-300 text-sm">
-                                  <span className={`px-2 py-1 rounded text-xs font-medium ${
-                                    txn.type === 'BUY' ? 'bg-green-900/30 text-green-400' :
-                                    txn.type === 'SELL' ? 'bg-red-900/30 text-red-400' :
-                                    'bg-slate-700 text-slate-300'
-                                  }`}>
-                                    {txn.type}
-                                  </span>
+                                  <div className="flex items-center gap-1">
+                                    <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                      txn.type === 'BUY' ? 'bg-green-900/30 text-green-400' :
+                                      txn.type === 'SELL' ? 'bg-red-900/30 text-red-400' :
+                                      'bg-slate-700 text-slate-300'
+                                    }`}>
+                                      {txn.type}
+                                    </span>
+                                    {isFetchedPrice && (
+                                      <span title="Price fetched from Yahoo Finance" className="text-yellow-500 text-xs">⚠️</span>
+                                    )}
+                                  </div>
                                 </td>
                                 <td className="p-2 text-white font-medium">{txn.symbol}</td>
                                 <td className="p-2 text-slate-300 text-right">{txn.quantity}</td>
                                 <td className="p-2 text-right">
                                   <input
-                                    type="number"
-                                    step="0.01"
-                                    value={displayAmount}
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={displayPrice}
                                     onChange={(e) => {
-                                      const newAmount = parseFloat(e.target.value) || 0;
+                                      const newPrice = parseFloat(e.target.value) || 0;
+                                      const newAmount = newPrice * txn.quantity;
                                       setTransactionAdjustments(prev => ({
                                         ...prev,
                                         [adjustKey]: {
                                           ...adjustment,
+                                          pricePerUnit: newPrice,
                                           totalAmount: newAmount
                                         }
                                       }));
@@ -427,6 +436,7 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
                                     className="w-20 px-2 py-1 bg-slate-700 text-white text-right rounded border border-slate-600 focus:border-blue-500 focus:outline-none text-sm"
                                   />
                                 </td>
+                                <td className="p-2 text-slate-300 text-right">{formatCurrency(displayPrice * txn.quantity)}</td>
                               </tr>
                                   );
                                 })}

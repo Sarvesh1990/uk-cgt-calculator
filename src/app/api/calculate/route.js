@@ -32,7 +32,6 @@ export async function POST(request) {
 
     console.log('Files received:', files.length);
     console.log('Brokers received:', brokers);
-    console.log('Adjustments received:', Object.keys(adjustments).length > 0 ? adjustments : 'none');
 
     if (!files || files.length === 0) {
       return NextResponse.json(
@@ -120,26 +119,31 @@ export async function POST(request) {
         }));
       }
 
+      const fileIdx = parsedFiles.length;
+
+      // Apply adjustments and add transaction IDs
+      transactions = transactions.map((t, txnIdx) => {
+        const adjustKey = `${brokerName}_${fileIdx}_${txnIdx}`;
+        const adjustment = adjustments[adjustKey];
+        const adjustedTxn = {
+          ...t,
+          __txnId: `${brokerName}_${fileIdx}_${txnIdx}`,
+        };
+        if (adjustment) {
+          console.log(`[API] Applying adjustment to ${brokerName} txn ${txnIdx}: price=${adjustment.pricePerUnit}, amount=${adjustment.totalAmount}`);
+          if (adjustment.pricePerUnit !== undefined) adjustedTxn.pricePerUnit = adjustment.pricePerUnit;
+          if (adjustment.totalAmount !== undefined) adjustedTxn.totalAmount = adjustment.totalAmount;
+          // Mark this transaction as adjusted so we don't overwrite it with historical prices
+          adjustedTxn.__isAdjusted = true;
+        }
+        return adjustedTxn;
+      });
+
       parsedFiles.push({
         fileName: file.name,
         broker: brokerName,
         transactionCount: transactions.length,
         transactions: transactions,
-      });
-
-      // Apply adjustments to transactions
-      transactions = transactions.map((t, txnIdx) => {
-        const adjustKey = `${brokerName}_${parsedFiles.length - 1}_${txnIdx}`;
-        const adjustment = adjustments[adjustKey];
-        if (adjustment) {
-          console.log(`[API] Applying adjustment to ${brokerName} txn ${txnIdx}: price=${adjustment.pricePerUnit}, amount=${adjustment.totalAmount}`);
-          return {
-            ...t,
-            ...(adjustment.pricePerUnit !== undefined && { pricePerUnit: adjustment.pricePerUnit }),
-            ...(adjustment.totalAmount !== undefined && { totalAmount: adjustment.totalAmount }),
-          };
-        }
-        return t;
       });
 
       allTransactions = allTransactions.concat(transactions);
@@ -311,13 +315,8 @@ export async function POST(request) {
     // Update parsedFiles with enriched transaction data (historical prices, exchange rates, etc.)
     parsedFiles.forEach(file => {
       file.transactions = file.transactions.map(txn => {
-        // Find the enriched version of this transaction
-        const enrichedTxn = allTransactions.find(t =>
-          t.date === txn.date &&
-          t.symbol === txn.symbol &&
-          t.type === txn.type &&
-          t.quantity === txn.quantity
-        );
+        // Find the enriched version of this transaction by its ID
+        const enrichedTxn = allTransactions.find(t => t.__txnId === txn.__txnId);
         // Return enriched data if found, otherwise return original
         return enrichedTxn || txn;
       });

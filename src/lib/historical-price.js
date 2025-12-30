@@ -157,7 +157,7 @@ async function fetchBatch(requests, concurrency = 10) {
  * @returns {Promise<Array>} - Updated transactions with prices filled in
  */
 export async function fetchHistoricalPricesForTransactions(transactions) {
-  const transactionsNeedingPrice = transactions.filter(txn => txn.needsHistoricalPrice);
+  const transactionsNeedingPrice = transactions.filter(txn => txn.needsHistoricalPrice && !txn.__isAdjusted);
 
   if (transactionsNeedingPrice.length === 0) {
     return transactions;
@@ -188,6 +188,11 @@ export async function fetchHistoricalPricesForTransactions(transactions) {
   // Update transactions with fetched/cached prices
   let successCount = 0;
   const updatedTransactions = transactions.map(txn => {
+    // Skip adjusted transactions - don't overwrite their prices
+    if (txn.__isAdjusted) {
+      return txn;
+    }
+    
     if (!txn.needsHistoricalPrice) {
       return txn;
     }
