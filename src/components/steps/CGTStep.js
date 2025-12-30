@@ -21,6 +21,7 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
   const [error, setError] = useState(null);
   const [showDetails, setShowDetails] = useState(false);
   const [viewMode, setViewMode] = useState('disposals'); // 'disposals' or 'all-transactions'
+  const [transactionAdjustments, setTransactionAdjustments] = useState({}); // { 'brokerId_index': { pricePerUnit, totalAmount } }
 
   const totalFilesCount = brokerUploads.reduce((sum, u) => sum + u.files.length, 0) + currentFiles.length;
 
@@ -364,6 +365,9 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
               {/* All Transactions View */}
               {viewMode === 'all-transactions' && (
                 <div className="space-y-6">
+                  <div className="p-3 bg-blue-900/30 border border-blue-700 rounded text-blue-200 text-sm">
+                    💡 <strong>Tip:</strong> Click on Price or Amount values to adjust them if needed. These adjustments will be used in the CGT calculation.
+                  </div>
                   {cgtResult?.parsedFiles && cgtResult.parsedFiles.length > 0 ? (
                     cgtResult.parsedFiles.map((file, fileIdx) => (
                       <div key={fileIdx} className="bg-slate-800/50 rounded-lg p-4">
@@ -382,8 +386,15 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
                                 </tr>
                               </thead>
                               <tbody>
-                                {file.transactions.map((txn, txnIdx) => (
-                              <tr key={txnIdx} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                                {file.transactions.map((txn, txnIdx) => {
+                                  const adjustKey = `${file.broker}_${fileIdx}_${txnIdx}`;
+                                  const adjustment = transactionAdjustments[adjustKey];
+                                  const displayPrice = adjustment?.pricePerUnit !== undefined ? adjustment.pricePerUnit : (txn.pricePerUnit || txn.price || 0);
+                                  const displayAmount = adjustment?.totalAmount !== undefined ? adjustment.totalAmount : (txn.totalAmount || txn.amount || 0);
+                                  const hasAdjustment = adjustment !== undefined;
+
+                                  return (
+                              <tr key={txnIdx} className={`border-b border-slate-700/50 hover:bg-slate-700/30 ${hasAdjustment ? 'bg-amber-900/20' : ''}`}>
                                 <td className="p-2 text-white">{txn.date}</td>
                                 <td className="p-2 text-slate-300 text-sm">
                                   <span className={`px-2 py-1 rounded text-xs font-medium ${
@@ -396,14 +407,47 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
                                 </td>
                                 <td className="p-2 text-white font-medium">{txn.symbol}</td>
                                 <td className="p-2 text-slate-300 text-right">{txn.quantity}</td>
-                                <td className="p-2 text-slate-300 text-right">
-                                  {txn.pricePerUnit && txn.pricePerUnit > 0 ? formatCurrency(txn.pricePerUnit) : (txn.price ? formatCurrency(txn.price) : '—')}
+                                <td className="p-2 text-right">
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={displayPrice}
+                                    onChange={(e) => {
+                                      const newPrice = parseFloat(e.target.value) || 0;
+                                      setTransactionAdjustments(prev => ({
+                                        ...prev,
+                                        [adjustKey]: {
+                                          ...adjustment,
+                                          pricePerUnit: newPrice,
+                                          totalAmount: adjustment?.totalAmount !== undefined ? adjustment.totalAmount : (newPrice * txn.quantity)
+                                        }
+                                      }));
+                                    }}
+                                    className="w-20 px-2 py-1 bg-slate-700 text-white text-right rounded border border-slate-600 focus:border-blue-500 focus:outline-none text-sm"
+                                  />
                                 </td>
-                                <td className="p-2 text-slate-300 text-right">
-                                  {txn.totalAmount ? formatCurrency(txn.totalAmount) : (txn.amount ? formatCurrency(txn.amount) : (txn.pricePerUnit ? formatCurrency(txn.quantity * txn.pricePerUnit) : '—'))}
+                                <td className="p-2 text-right">
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={displayAmount}
+                                    onChange={(e) => {
+                                      const newAmount = parseFloat(e.target.value) || 0;
+                                      setTransactionAdjustments(prev => ({
+                                        ...prev,
+                                        [adjustKey]: {
+                                          ...adjustment,
+                                          totalAmount: newAmount,
+                                          pricePerUnit: adjustment?.pricePerUnit !== undefined ? adjustment.pricePerUnit : (newAmount / txn.quantity)
+                                        }
+                                      }));
+                                    }}
+                                    className="w-20 px-2 py-1 bg-slate-700 text-white text-right rounded border border-slate-600 focus:border-blue-500 focus:outline-none text-sm"
+                                  />
                                 </td>
                               </tr>
-                            ))}
+                                  );
+                                })}
                           </tbody>
                         </table>
                       </div>
