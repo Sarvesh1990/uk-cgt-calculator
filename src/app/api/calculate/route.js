@@ -217,7 +217,10 @@ export async function POST(request) {
       // Convert back and update amountGBP
       allDividends = allDividends.map(d => ({
         ...d,
-        amountGBP: d.currency === 'GBP' ? d.netAmount : (d.totalAmountGBP || d.netAmount * (d.exchangeRate || 1)),
+        // exchangeRate is stored as (1/rate), so we divide by it to convert USD to GBP
+        // e.g., if rate is 0.79 GBP per USD, exchangeRate is 1/0.79 = 1.266
+        // so USD 100 / 1.266 = GBP 78.99
+        amountGBP: d.currency === 'GBP' ? d.netAmount : (d.netAmount / (d.exchangeRate || 1)),
       }));
     }
 
