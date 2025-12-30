@@ -29,6 +29,10 @@ export async function POST(request) {
     const brokers = formData.getAll('brokers'); // Get broker IDs for each file
     const adjustmentsJson = formData.get('adjustments');
     const adjustments = adjustmentsJson ? JSON.parse(adjustmentsJson) : {};
+    const deletedIdsJson = formData.get('deletedTransactionIds');
+    const deletedIds = new Set(deletedIdsJson ? JSON.parse(deletedIdsJson) : []);
+    const manualTransactionsJson = formData.get('manualTransactions');
+    const manualTransactions = manualTransactionsJson ? JSON.parse(manualTransactionsJson) : [];
 
     console.log('Files received:', files.length);
     console.log('Brokers received:', brokers);
@@ -155,6 +159,12 @@ export async function POST(request) {
         { status: 400 }
       );
     }
+
+    // Filter out deleted transactions
+    allTransactions = allTransactions.filter(txn => !deletedIds.has(txn.__txnId));
+
+    // Add manual transactions
+    allTransactions = allTransactions.concat(manualTransactions);
 
     // Now parse dividends from the same files
     let allDividends = [];
