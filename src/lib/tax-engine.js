@@ -8,6 +8,47 @@
 // Tax bands are defined as widths applied to TAXABLE INCOME (after PA deduction)
 // This is how HMRC calculates: first £37,700 at 20%, next chunk at 40%, rest at 45%
 export const UK_TAX_CONFIG = {
+  "2025/26": {
+    personalAllowance: 12570,
+    personalAllowanceTaperThreshold: 100000,
+    personalAllowanceTaperRate: 0.5,
+
+    incomeTaxBands: [
+      { name: "Basic Rate", width: 37700, rate: 0.20 },
+      { name: "Higher Rate", threshold: 125140, rate: 0.40 },
+      { name: "Additional Rate", width: Infinity, rate: 0.45 },
+    ],
+    basicRateBandWidth: 37700,
+    higherRateThreshold: 125140,
+
+    nationalInsurance: {
+      primaryThreshold: 12570,
+      upperEarningsLimit: 50270,
+      mainRate: 0.08,
+      upperRate: 0.02,
+    },
+
+    studentLoan: {
+      plan1Threshold: 24990,
+      plan2Threshold: 27295,
+      plan4Threshold: 31395,
+      plan5Threshold: 25000,
+      postgraduateThreshold: 21000,
+      rate: 0.09,
+      postgraduateRate: 0.06,
+    },
+
+    // CGT rates for 2025/26 (post-Oct 2024 rates apply to all)
+    cgtRates: {
+      basicRate: 0.18,
+      higherRate: 0.24,
+    },
+
+    cgtAnnualExemption: 3000,
+    pensionAnnualAllowance: 60000,
+    pensionLifetimeAllowance: null,
+  },
+
   "2024/25": {
     personalAllowance: 12570,
     personalAllowanceTaperThreshold: 100000, // PA reduces above this
