@@ -12,6 +12,20 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <head>
+        {/* Google Ads Tracking Code */}
+        <Script
+          src="https://www.googletagmanager.com/gtag/js?id=AW-939500252"
+          strategy="afterInteractive"
+        />
+        <Script id="google-ads" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', 'AW-939500252');
+          `}
+        </Script>
+
         {/* Meta Pixel Base Code */}
         {pixelId && (
           <Script id="meta-pixel" strategy="afterInteractive">

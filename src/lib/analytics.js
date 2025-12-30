@@ -150,6 +150,18 @@ export function trackIncomeEntry(data = {}) {
   });
 }
 
+/**
+ * Track whether the user entered any interest (metadata only — no amounts)
+ * @param {Object} data - { entered: boolean, hasUkInterest: boolean, hasForeignInterest: boolean }
+ */
+export function trackInterestEntered(data = {}) {
+  trackEvent('interest_entered', {
+    entered: !!data.entered,
+    hasUkInterest: !!data.hasUkInterest,
+    hasForeignInterest: !!data.hasForeignInterest,
+  });
+}
+
 // ============================================
 // Step 2: CGT Step Tracking
 // ============================================
