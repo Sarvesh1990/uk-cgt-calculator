@@ -177,15 +177,6 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
           <StatCard label="Taxable" value={formatCurrency(yearData.taxableGain)} />
           <StatCard label="Exemption" value={formatCurrency(yearData.annualExemption)} />
         </div>
-
-        {/* Add More Files Button */}
-        <button
-          onClick={() => setCgtResult(null)}
-          className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
-        >
-          <span>➕</span>
-          Add More Transaction Files
-        </button>
         {/* Download PDF Button */}
         <div className="flex justify-center">
           <button
@@ -385,8 +376,15 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
             />
           )}
 
-          <div className="flex justify-between pt-4">
+          <div className="flex justify-between items-center gap-3 pt-4">
             <button onClick={onBack} className="px-4 py-2 text-slate-400 hover:text-white">← Back</button>
+            <button
+              onClick={() => setCgtResult(null)}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors flex items-center gap-2"
+            >
+              <span>➕</span>
+              Add More
+            </button>
             <button onClick={onNext} className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-500">
               Continue →
             </button>
@@ -579,7 +577,12 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
                   Calculating...
                 </span>
               ) : (
-                `🧮 Calculate CGT${brokerUploads.length > 0 ? ` (${brokerUploads.length} broker${brokerUploads.length > 1 ? 's' : ''})` : ''}`
+                (() => {
+                  // Only count selectedBroker if it's not already in brokerUploads
+                  const alreadyUploaded = brokerUploads.some(u => u.broker.id === selectedBroker?.id);
+                  const brokerCount = brokerUploads.length + (selectedBroker && !alreadyUploaded ? 1 : 0);
+                  return `🧮 Calculate CGT${brokerCount > 0 ? ` (${brokerCount} broker${brokerCount > 1 ? 's' : ''})` : ''}`;
+                })()
               )}
             </button>
           </div>
