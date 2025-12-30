@@ -178,6 +178,14 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
           <StatCard label="Exemption" value={formatCurrency(yearData.annualExemption)} />
         </div>
 
+        {/* Add More Files Button */}
+        <button
+          onClick={() => setCgtResult(null)}
+          className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+        >
+          <span>➕</span>
+          Add More Transaction Files
+        </button>
         {/* Download PDF Button */}
         <div className="flex justify-center">
           <button
