@@ -369,7 +369,7 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
               {viewMode === 'all-transactions' && (
                 <div className="space-y-6">
                   <div className="p-3 bg-blue-900/30 border border-blue-700 rounded text-blue-200 text-sm">
-                    💡 <strong>Tip:</strong> Click on Price or Amount values to adjust them if needed. These adjustments will be used in the CGT calculation.
+                    💡 <strong>Tip:</strong> Click on Amount values to adjust them if needed. Click "Recalculate" to apply adjustments and recalculate CGT.
                   </div>
                   {cgtResult?.parsedFiles && cgtResult.parsedFiles.length > 0 ? (
                     cgtResult.parsedFiles.map((file, fileIdx) => (
@@ -384,7 +384,6 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
                                   <th className="p-2">Action</th>
                                   <th className="p-2">Symbol</th>
                                   <th className="p-2 text-right">Quantity</th>
-                                  <th className="p-2 text-right">Price</th>
                                   <th className="p-2 text-right">Amount</th>
                                 </tr>
                               </thead>
@@ -414,25 +413,6 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
                                   <input
                                     type="number"
                                     step="0.01"
-                                    value={displayPrice}
-                                    onChange={(e) => {
-                                      const newPrice = parseFloat(e.target.value) || 0;
-                                      setTransactionAdjustments(prev => ({
-                                        ...prev,
-                                        [adjustKey]: {
-                                          ...adjustment,
-                                          pricePerUnit: newPrice,
-                                          totalAmount: adjustment?.totalAmount !== undefined ? adjustment.totalAmount : (newPrice * txn.quantity)
-                                        }
-                                      }));
-                                    }}
-                                    className="w-20 px-2 py-1 bg-slate-700 text-white text-right rounded border border-slate-600 focus:border-blue-500 focus:outline-none text-sm"
-                                  />
-                                </td>
-                                <td className="p-2 text-right">
-                                  <input
-                                    type="number"
-                                    step="0.01"
                                     value={displayAmount}
                                     onChange={(e) => {
                                       const newAmount = parseFloat(e.target.value) || 0;
@@ -440,8 +420,7 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
                                         ...prev,
                                         [adjustKey]: {
                                           ...adjustment,
-                                          totalAmount: newAmount,
-                                          pricePerUnit: adjustment?.pricePerUnit !== undefined ? adjustment.pricePerUnit : (newAmount / txn.quantity)
+                                          totalAmount: newAmount
                                         }
                                       }));
                                     }}
@@ -461,6 +440,22 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
                     ))
                   ) : (
                     <p className="text-slate-400 text-center py-8">No transaction data available</p>
+                  )}
+
+                  {Object.keys(transactionAdjustments).length > 0 && (
+                    <div className="flex justify-center pt-4">
+                      <button
+                        onClick={() => {
+                          setViewMode('disposals');
+                          calculate();
+                        }}
+                        disabled={loading}
+                        className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:from-slate-600 disabled:to-slate-600 text-white font-medium rounded-lg transition-all flex items-center gap-2"
+                      >
+                        <span>🔄</span>
+                        <span>{loading ? 'Recalculating...' : 'Recalculate CGT'}</span>
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
