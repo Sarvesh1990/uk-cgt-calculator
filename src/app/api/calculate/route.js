@@ -27,9 +27,12 @@ export async function POST(request) {
     const formData = await request.formData();
     const files = formData.getAll('files');
     const brokers = formData.getAll('brokers'); // Get broker IDs for each file
+    const adjustmentsJson = formData.get('adjustments');
+    const adjustments = adjustmentsJson ? JSON.parse(adjustmentsJson) : {};
 
     console.log('Files received:', files.length);
     console.log('Brokers received:', brokers);
+    console.log('Adjustments received:', Object.keys(adjustments).length > 0 ? adjustments : 'none');
 
     if (!files || files.length === 0) {
       return NextResponse.json(
@@ -122,6 +125,21 @@ export async function POST(request) {
         broker: brokerName,
         transactionCount: transactions.length,
         transactions: transactions,
+      });
+
+      // Apply adjustments to transactions
+      transactions = transactions.map((t, txnIdx) => {
+        const adjustKey = `${brokerName}_${parsedFiles.length - 1}_${txnIdx}`;
+        const adjustment = adjustments[adjustKey];
+        if (adjustment) {
+          console.log(`[API] Applying adjustment to ${brokerName} txn ${txnIdx}: price=${adjustment.pricePerUnit}, amount=${adjustment.totalAmount}`);
+          return {
+            ...t,
+            ...(adjustment.pricePerUnit !== undefined && { pricePerUnit: adjustment.pricePerUnit }),
+            ...(adjustment.totalAmount !== undefined && { totalAmount: adjustment.totalAmount }),
+          };
+        }
+        return t;
       });
 
       allTransactions = allTransactions.concat(transactions);

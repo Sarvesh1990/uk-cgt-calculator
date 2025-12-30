@@ -125,6 +125,9 @@ export default function CGTStep({ taxYear, cgtResult, setCgtResult, incomeData, 
         });
       });
 
+      // Pass transaction adjustments as JSON
+      formData.append('adjustments', JSON.stringify(transactionAdjustments));
+
       const res = await fetch('/api/calculate', { method: 'POST', body: formData });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to calculate');
