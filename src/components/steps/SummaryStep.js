@@ -418,13 +418,24 @@ function DividendSummarySection({ dividendData, taxYear, taxableIncome }) {
             <span className="text-slate-400 text-xs">Foreign Dividends</span>
           </div>
           <p className="text-white font-bold">{formatCurrency(dividendData.foreignDividends)}</p>
-          {dividendData.withholdingTax > 0 && (
-            <p className="text-amber-400 text-xs mt-1">
-              Withholding: {formatCurrency(dividendData.withholdingTax)}
-            </p>
-          )}
         </div>
       </div>
+
+      {/* Tax Deducted on Dividends Section */}
+      {dividendData.withholdingTax > 0 && (
+        <div className="bg-amber-900/20 border border-amber-700/50 rounded-lg p-4 mb-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xl">🏦</span>
+                <span className="text-amber-400 font-semibold">Tax Deducted at Source</span>
+              </div>
+              <p className="text-slate-400 text-xs">Foreign withholding tax on dividends</p>
+            </div>
+            <p className="text-amber-400 text-2xl font-bold">{formatCurrency(dividendData.withholdingTax)}</p>
+          </div>
+        </div>
+      )}
 
       <div className="border-t border-slate-600 pt-3 space-y-2">
         <Row label="Total Dividends" value={dividendData.totalDividends} bold />
@@ -455,7 +466,7 @@ function DividendSummarySection({ dividendData, taxYear, taxableIncome }) {
         <div className="bg-blue-900/30 border border-blue-700/50 rounded-lg p-3 mt-3">
           <p className="text-blue-400 text-sm">
             💡 You may be able to claim foreign tax credit relief for the {formatCurrency(dividendData.withholdingTax)}
-            {' '}withholding tax paid on foreign dividends.
+            {' '}withholding tax deducted on foreign dividends.
           </p>
         </div>
       )}

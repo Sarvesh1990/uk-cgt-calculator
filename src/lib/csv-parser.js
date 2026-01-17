@@ -429,9 +429,32 @@ export const brokerParsers = {
 
           // Parse date - handle "MM/DD/YYYY as of MM/DD/YYYY" format
           let date = row[dateIdx] || "";
+          let dateForHistoricalPrice = undefined; // Separate date for fetching historical prices (undefined = use transaction date)
+          
           if (date.includes(" as of ")) {
             // Use the "as of" date which is the actual effective date
-            date = date.split(" as of ")[1];
+            const asOfDate = date.split(" as of ")[1];
+            date = asOfDate;
+          }
+
+          // For RSU vestings: Always use the 15th of the vesting month
+          // The historical price fetcher will look backward if 15th is a weekend or holiday
+          if (needsHistoricalPrice) {
+            const vestingDate = new Date(date);
+            const year = vestingDate.getFullYear();
+            const month = vestingDate.getMonth();
+            
+            // Set to 15th of the month using UTC to avoid timezone issues
+            // Don't adjust for weekends here - let historical-price.js handle lookback
+            const fifteenth = new Date(Date.UTC(year, month, 15, 12, 0, 0));
+            
+            // Format as MM/DD/YYYY for consistency with Schwab date format
+            const resultMonth = String(fifteenth.getUTCMonth() + 1).padStart(2, '0');
+            const resultDay = String(fifteenth.getUTCDate()).padStart(2, '0');
+            const resultYear = fifteenth.getUTCFullYear();
+            dateForHistoricalPrice = `${resultMonth}/${resultDay}/${resultYear}`;
+            
+            console.log(`[SCHWAB] RSU vesting in ${month + 1}/${year} - using 15th: ${dateForHistoricalPrice}`);
           }
 
           // Normalize ticker (FB → META)
@@ -461,6 +484,7 @@ export const brokerParsers = {
             exchangeRate: 1,
             broker: "Charles Schwab",
             needsHistoricalPrice, // Flag for RSU vesting transactions
+            historicalPriceDate: needsHistoricalPrice ? dateForHistoricalPrice : undefined, // Use T-1 date for RSU price fetching
           };
         });
     },
@@ -843,17 +867,18 @@ export const dividendParsers = {
       const descriptionIdx = getIndex("description");
       const amountIdx = getIndex("amount");
 
-      return rows
-        .filter((row) => {
-          const action = (row[actionIdx] || "").toLowerCase();
-          return action.includes("dividend") || action.includes("qual div") || action.includes("cash div");
-        })
-        .map((row) => {
+      const dividends = [];
+      
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const action = (row[actionIdx] || "").toLowerCase();
+        
+        // Check if this is a dividend row
+        if (action.includes("dividend") || action.includes("qual div") || action.includes("cash div")) {
           let amount = amountIdx !== -1 && row[amountIdx]
             ? parseFloat((row[amountIdx] || "0").replace(/[^0-9.-]/g, ""))
             : 0;
 
-          // Schwab amounts are typically in USD
           let symbol = row[symbolIdx] || "";
           if (symbol === "FB") symbol = "META";
 
@@ -863,13 +888,26 @@ export const dividendParsers = {
             date = date.split(" as of ")[1];
           }
 
+          // Check next row for "NRA Tax Adj" (withholding tax)
+          let withholdingTax = 0;
+          if (i + 1 < rows.length) {
+            const nextRow = rows[i + 1];
+            const nextAction = (nextRow[actionIdx] || "").toLowerCase();
+            if (nextAction.includes("nra tax adj") || nextAction.includes("nra tax")) {
+              const taxAmount = amountIdx !== -1 && nextRow[amountIdx]
+                ? parseFloat((nextRow[amountIdx] || "0").replace(/[^0-9.-]/g, ""))
+                : 0;
+              withholdingTax = Math.abs(taxAmount);
+            }
+          }
+
           const dividend = {
             date,
             symbol,
             assetName: descriptionIdx !== -1 ? row[descriptionIdx] : undefined,
-            grossAmount: Math.abs(amount),
-            netAmount: Math.abs(amount), // Schwab shows net after any withholding
-            withholdingTax: 0, // Usually shown separately or not at all
+            grossAmount: Math.abs(amount) + withholdingTax, // Gross = net + withheld
+            netAmount: Math.abs(amount),
+            withholdingTax: withholdingTax,
             currency: "USD",
             exchangeRate: 1, // Will be converted later
             amountGBP: 0, // Will be calculated after FX conversion
@@ -877,8 +915,11 @@ export const dividendParsers = {
           };
 
           dividend.source = classifyDividendSource(dividend);
-          return dividend;
-        });
+          dividends.push(dividend);
+        }
+      }
+      
+      return dividends;
     },
   },
 

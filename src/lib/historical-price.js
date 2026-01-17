@@ -2,6 +2,10 @@
  * Historical Price Fetcher
  * Fetches closing prices from Yahoo Finance for RSU vesting transactions
  * Optimized for parallel fetching with caching and deduplication
+ * 
+ * IMPORTANT: For Schwab RSU vestings, the cost basis is the closing price from
+ * the PREVIOUS trading day (T-1) before the vesting date. This is handled by
+ * the csv-parser which sets historicalPriceDate to T-1 for such transactions.
  */
 
 // In-memory cache for prices (persists across requests in same server instance)
@@ -58,11 +62,13 @@ function getCacheKey(ticker, dateStr) {
 
 /**
  * Fetch historical closing price from Yahoo Finance
+ * If the requested date has no data (weekend/holiday), looks back up to 5 days for the previous trading day
  * @param {string} ticker - Stock ticker symbol
  * @param {string} dateStr - Date string in various formats
+ * @param {number} maxLookbackDays - Maximum days to look back for trading data (default 5)
  * @returns {Promise<number|null>} - Closing price or null if not found
  */
-export async function fetchHistoricalPrice(ticker, dateStr) {
+export async function fetchHistoricalPrice(ticker, dateStr, maxLookbackDays = 5) {
   const cacheKey = getCacheKey(ticker, dateStr);
 
   // Check cache first
@@ -78,48 +84,80 @@ export async function fetchHistoricalPrice(ticker, dateStr) {
     return null;
   }
 
-  const dateFormatted = date.toISOString().split('T')[0];
+  // Try fetching for the requested date and up to maxLookbackDays before if no data found
+  for (let daysBack = 0; daysBack <= maxLookbackDays; daysBack++) {
+    const lookbackDate = new Date(date);
+    lookbackDate.setUTCDate(lookbackDate.getUTCDate() - daysBack);
+    const dateFormatted = lookbackDate.toISOString().split('T')[0];
 
-  try {
-    // Calculate timestamps for Yahoo Finance API
-    const startTimestamp = Math.floor(date.getTime() / 1000);
-    const endTimestamp = startTimestamp + (24 * 60 * 60); // Next day
+    try {
+      // Fetch a 5-day window to increase chances of finding data
+      // IMPORTANT: Set time to 5 PM EST (22:00 UTC) to ensure we're requesting data 
+      // after US market close (4 PM EST). This prevents Yahoo Finance from returning 
+      // previous day's data when converting UTC timestamps to US Eastern Time.
+      const startDate = new Date(lookbackDate);
+      startDate.setUTCDate(startDate.getUTCDate() - 3);
+      startDate.setUTCHours(22, 0, 0, 0); // 5 PM EST = 10 PM UTC
+      const endDate = new Date(lookbackDate);
+      endDate.setUTCHours(22, 0, 0, 0); // 5 PM EST = 10 PM UTC
+      
+      const startTimestamp = Math.floor(startDate.getTime() / 1000);
+      const endTimestamp = Math.floor(endDate.getTime() / 1000);
 
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?period1=${startTimestamp}&period2=${endTimestamp}&interval=1d`;
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?period1=${startTimestamp}&period2=${endTimestamp}&interval=1d`;
 
-    const response = await fetch(url);
+      const response = await fetch(url);
 
-    if (!response.ok) {
-      console.error(`[HISTORICAL-PRICE] Yahoo Finance API error: ${response.status}`);
-      return null;
-    }
-
-    const data = await response.json();
-
-    if (data.chart && data.chart.result && data.chart.result[0]) {
-      const result = data.chart.result[0];
-      const closes = result.indicators?.quote?.[0]?.close;
-
-      if (closes && closes.length > 0 && closes[0] !== null) {
-        const closePrice = closes[0];
-        console.log(`[HISTORICAL-PRICE] ✅ Fetched ${ticker} on ${dateFormatted}: $${closePrice.toFixed(2)} (Yahoo Finance close price)`);
-        console.log(`[HISTORICAL-PRICE] DEBUG: timestamps=${JSON.stringify(result.timestamp)}, closes=${JSON.stringify(closes)}`);
-
-        // Cache the result
-        if (cacheKey) {
-          priceCache.set(cacheKey, closePrice);
+      if (!response.ok) {
+        if (daysBack === 0) {
+          console.error(`[HISTORICAL-PRICE] Yahoo Finance API error: ${response.status}`);
         }
+        continue;
+      }
 
-        return closePrice;
+      const data = await response.json();
+
+      if (data.chart && data.chart.result && data.chart.result[0]) {
+        const result = data.chart.result[0];
+        const closes = result.indicators?.quote?.[0]?.close;
+        const timestamps = result.timestamp;
+
+        // Find the most recent close price before or on the target date
+        if (closes && timestamps) {
+          for (let i = timestamps.length - 1; i >= 0; i--) {
+            if (closes[i] !== null && closes[i] !== undefined) {
+              const priceDate = new Date(timestamps[i] * 1000);
+              const priceDateFormatted = priceDate.toISOString().split('T')[0];
+              
+              if (priceDate <= lookbackDate) {
+                const closePrice = closes[i];
+                
+                if (daysBack > 0) {
+                  console.log(`[HISTORICAL-PRICE] ✅ Fetched ${ticker} on ${priceDateFormatted}: $${closePrice.toFixed(2)} (requested ${dateStr.split('T')[0]}, went back ${daysBack} day${daysBack > 1 ? 's' : ''} due to weekend/holiday)`);
+                } else {
+                  console.log(`[HISTORICAL-PRICE] ✅ Fetched ${ticker} on ${dateFormatted}: $${closePrice.toFixed(2)} (Yahoo Finance close price)`);
+                }
+
+                // Cache using the original requested date key
+                if (cacheKey) {
+                  priceCache.set(cacheKey, closePrice);
+                }
+
+                return closePrice;
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      if (daysBack === 0) {
+        console.error(`[HISTORICAL-PRICE] Error fetching price for ${ticker} on ${dateFormatted}:`, error.message);
       }
     }
-
-    console.warn(`[HISTORICAL-PRICE] ⚠️ No close price found for ${ticker} on ${dateFormatted}`);
-    return null;
-  } catch (error) {
-    console.error(`[HISTORICAL-PRICE] Error fetching price for ${ticker} on ${dateFormatted}:`, error.message);
-    return null;
   }
+
+  console.warn(`[HISTORICAL-PRICE] ⚠️ No close price found for ${ticker} on ${dateStr} (tried looking back ${maxLookbackDays} days)`);
+  return null;
 }
 
 /**
@@ -169,9 +207,11 @@ export async function fetchHistoricalPricesForTransactions(transactions) {
   const uniqueRequests = new Map();
 
   for (const txn of transactionsNeedingPrice) {
-    const cacheKey = getCacheKey(txn.symbol, txn.date);
+    // Use historicalPriceDate if provided (for Schwab RSU T-1 logic), otherwise use transaction date
+    const dateToFetch = txn.historicalPriceDate || txn.date;
+    const cacheKey = getCacheKey(txn.symbol, dateToFetch);
     if (cacheKey && !uniqueRequests.has(cacheKey) && !priceCache.has(cacheKey)) {
-      uniqueRequests.set(cacheKey, { ticker: txn.symbol, dateStr: txn.date, cacheKey });
+      uniqueRequests.set(cacheKey, { ticker: txn.symbol, dateStr: dateToFetch, cacheKey });
     }
   }
 
@@ -197,7 +237,9 @@ export async function fetchHistoricalPricesForTransactions(transactions) {
       return txn;
     }
 
-    const cacheKey = getCacheKey(txn.symbol, txn.date);
+    // Use historicalPriceDate if provided (for Schwab RSU T-1 logic), otherwise use transaction date
+    const dateToFetch = txn.historicalPriceDate || txn.date;
+    const cacheKey = getCacheKey(txn.symbol, dateToFetch);
     const price = cacheKey ? priceCache.get(cacheKey) : null;
 
     if (price !== null && price !== undefined) {
@@ -212,7 +254,7 @@ export async function fetchHistoricalPricesForTransactions(transactions) {
     }
 
     // If we couldn't fetch the price, mark it but keep the transaction
-    console.warn(`[HISTORICAL-PRICE] Could not fetch price for ${txn.symbol} on ${txn.date}`);
+    console.warn(`[HISTORICAL-PRICE] Could not fetch price for ${txn.symbol} on ${dateToFetch}`);
     return {
       ...txn,
       pricePerUnit: 0,
